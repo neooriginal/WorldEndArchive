@@ -12,18 +12,12 @@
   },
   "keywords": [
     "archive",
-    "crawler",
-    "knowledge",
-    "preservation",
-    "apocalypse",
+    "web crawler",
     "offline",
-    "search",
-    "lzma",
-    "compression",
-    "sqlite3"
+    "knowledge preservation"
   ],
-  "author": "",
-  "license": "ISC",
+  "author": "WorldEndArchive Team",
+  "license": "CC-BY-NC-4.0",
   "dependencies": {
     "axios": "^1.8.4",
     "better-sqlite3": "^11.9.1",
