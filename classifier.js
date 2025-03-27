@@ -3,6 +3,8 @@
  * Enhanced with extensive keyword sets for various knowledge domains
  */
 
+const { topicWeights } = require('./crawler').CONFIG;
+
 // Extensive topic keywords organized by category
 const topicKeywords = {
   // Survival & Emergency Preparedness
@@ -155,51 +157,40 @@ const topicKeywords = {
 };
 
 /**
- * Classify content based on keyword matching and frequency analysis
- * 
- * @param {string} title - The page title
- * @param {string} content - The page content
- * @param {number} threshold - Minimum score to include topic (default: 2)
- * @return {Object} Topic scores with confidence values
+ * Classify content based on title and body text
+ * @param {string} title - Title of the page
+ * @param {string} bodyText - Text content of the page
+ * @param {number} minScore - Minimum score to consider a match
+ * @returns {Object} - Object with topic keys and confidence values
  */
-function classifyContent(title, content, threshold = 2) {
-  // Normalize content for better matching
-  const normalizedText = `${title} ${content}`.toLowerCase();
-  const scores = {};
+function classifyContent(title, bodyText, minScore = 1) {
+  const normalizedText = (title + ' ' + bodyText).toLowerCase();
+  const results = {};
   
-  // Calculate score for each topic by counting keyword matches
-  Object.entries(topicKeywords).forEach(([topic, keywords]) => {
-    let topicScore = 0;
+  // Apply topic detection for each topic
+  for (const topic of getAvailableTopics()) {
+    const keywords = topicKeywords[topic];
+    let score = 0;
     
-    // Keywords in title get higher weight
-    const normalizedTitle = title.toLowerCase();
-    
-    // Process each keyword
-    keywords.forEach(keyword => {
-      // Get exact word matches for better accuracy
-      const regex = new RegExp(`\\b${keyword.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'gi');
-      
-      // Count matches in title (with higher weight)
-      const titleMatches = (normalizedTitle.match(regex) || []).length;
-      topicScore += titleMatches * 3;
-      
-      // Count matches in content
-      const contentMatches = (normalizedText.match(regex) || []).length;
-      topicScore += contentMatches;
-    });
-    
-    // Only add topics that meet threshold
-    if (topicScore >= threshold) {
-      // Calculate confidence (0.0-1.0) based on keyword density
-      // Normalize by text length and keyword count to avoid bias toward longer texts
-      const wordCount = normalizedText.split(/\s+/).length;
-      const normalizedScore = Math.min(1.0, (topicScore / Math.sqrt(wordCount)) * Math.sqrt(keywords.length / 10));
-      
-      scores[topic] = parseFloat(normalizedScore.toFixed(2));
+    // Check for keyword matches
+    for (const keyword of keywords) {
+      if (normalizedText.includes(keyword.toLowerCase())) {
+        // Add keyword specific weight
+        score += 1;
+      }
     }
-  });
+    
+    // Apply topic weight modifier if available
+    const topicWeight = topicWeights?.[topic] || 1.0;
+    score = score * topicWeight;
+    
+    // Add to results if score exceeds threshold
+    if (score >= minScore) {
+      results[topic] = score;
+    }
+  }
   
-  return scores;
+  return results;
 }
 
 /**

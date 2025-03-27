@@ -36,12 +36,33 @@ const CONFIG = {
   minTopicsRequired: 1,           // Minimum number of topics required to archive content
   minContentLength: 500,          // Minimum content length in characters
   
+  // Topic importance weights (higher = more important)
+  topicWeights: {
+    'science': 2.0,
+    'technology': 2.0,
+    'medicine': 2.0,
+    'engineering': 2.0,
+    'agriculture': 2.0,
+    'mathematics': 1.8,
+    'history': 1.5,
+    'literature': 1.5,
+    'education': 1.8,
+    'survival': 2.0,
+    'computing': 1.8,
+    'entertainment': 0.6  // Lower priority for entertainment content
+  },
+  
   // Filters
   allowedDomains: [],           // Empty means all domains, specific items restrict to those domains
   excludedDomains: [           // Domains to explicitly exclude  
     'facebook.com', 'twitter.com', 'instagram.com', 'pinterest.com',
     'youtube.com', 'linkedin.com', 'reddit.com', 'tiktok.com',
-    'amazon.com', 'ebay.com', 'walmart.com', 'target.com', 'etsy.com'
+    'amazon.com', 'ebay.com', 'walmart.com', 'target.com', 'etsy.com',
+    // Additional entertainment-focused sites
+    'netflix.com', 'hulu.com', 'disneyplus.com', 'hbomax.com',
+    'peacocktv.com', 'primevideo.com', 'twitch.tv', 'ign.com',
+    'gamespot.com', 'polygon.com', 'kotaku.com', 'tmz.com',
+    'eonline.com', 'variety.com', 'hollywoodreporter.com', 'buzzfeed.com'
   ],
   excludedExtensions: [        // File extensions to skip
     '.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx',
@@ -489,52 +510,77 @@ async function getQueueSize() {
  */
 function getRecommendedSeeds() {
   return [
-    // General knowledge
+    // General knowledge & Reference
     'https://en.wikipedia.org/wiki/Main_Page',
     'https://www.britannica.com/',
+    'https://plato.stanford.edu/',
+    'https://www.gutenberg.org/',
     
-    // Science & Technology
+    // Science & Research
     'https://www.scientificamerican.com/',
     'https://www.nature.com/',
     'https://www.science.org/',
-    'https://www.technologyreview.com/',
+    'https://phys.org/',
+    'https://www.ncbi.nlm.nih.gov/',
+    'https://arxiv.org/',
     
     // Medicine & Health
     'https://www.nih.gov/',
     'https://www.who.int/',
     'https://www.mayoclinic.org/',
     'https://medlineplus.gov/',
+    'https://www.cdc.gov/',
+    'https://www.merckmanuals.com/',
     
     // Survival & Preparedness
     'https://www.ready.gov/',
     'https://www.primalsurvivor.net/',
     'https://www.wildernessawareness.org/',
+    'https://theprepared.com/',
+    'https://modernsurvivalblog.com/',
+    'https://www.survival.org.au/',
     
     // Engineering & Construction
     'https://www.engineeringtoolbox.com/',
     'https://www.eng-tips.com/',
+    'https://ocw.mit.edu/courses/find-by-topic/#cat=engineering',
+    'https://www.buildingsciencecorp.com/',
+    'https://www.structuremag.org/',
     
-    // Agriculture & Food
+    // Agriculture & Food Production
     'https://www.almanac.com/',
     'https://extension.umn.edu/yard-and-garden',
     'https://www.nrcs.usda.gov/',
+    'https://www.fao.org/',
+    'https://www.permaculturenews.org/',
+    'https://smallfarms.cornell.edu/resources/',
     
     // Computing & Programming
     'https://developer.mozilla.org/',
     'https://www.w3schools.com/',
     'https://www.geeksforgeeks.org/',
+    'https://learnxinyminutes.com/',
+    'https://cs.stanford.edu/people/eroberts/courses/',
     
     // Mathematics
     'https://www.mathsisfun.com/',
     'https://tutorial.math.lamar.edu/',
+    'https://www.khanacademy.org/math',
+    'https://ocw.mit.edu/courses/find-by-topic/#cat=mathematics',
     
-    // History & Culture
-    'https://www.smithsonianmag.com/',
+    // History & Culture (important context)
     'https://www.worldhistory.org/',
+    'https://www.smithsonianmag.com/history/',
+    'https://ehistory.osu.edu/',
+    'https://www.loc.gov/collections/',
     
-    // Literature
-    'https://www.gutenberg.org/',
-    'https://www.poetryfoundation.org/'
+    // Literature (classics and important works)
+    'https://www.gutenberg.org/browse/scores/top',
+    'https://www.poetryfoundation.org/poems/browse',
+    
+    // Limited Entertainment (small selection for morale)
+    'https://www.classicshorts.com/',
+    'https://publicdomainmovies.info/'
   ];
 }
 
