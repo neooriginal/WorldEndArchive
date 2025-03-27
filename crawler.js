@@ -47,7 +47,7 @@ const CONFIG = {
     'history': 1.5,
     'literature': 1.5,
     'education': 1.8,
-    'survival': 2.0,
+    'survival': 2.5,
     'computing': 1.8,
     'entertainment': 0.6  // Lower priority for entertainment content
   },
