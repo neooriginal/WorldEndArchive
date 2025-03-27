@@ -2,29 +2,42 @@
 
 *When the networks have fallen and the lights have gone out, knowledge remains our most powerful tool for survival and rebuilding.*
 
-This archive contains humanity's critical knowledge, preserved against the collapse of our digital infrastructure. You've found an artifact of immense value - the collective wisdom of a civilization.
+This folder contains the WorldEndArchive Reader - your portal to access all archived knowledge. This standalone application is designed to work without any internet connection, server, or installation requirements.
 
-## Contents of This Archive
-
-- `standalone.html` - Your portal to all preserved knowledge
-- `sql-wasm.js` - The technical component that makes retrieval possible
-- The database file - Contains the actual archived information
-
-## How To Access The Knowledge
+## How To Use This Archive
 
 1. **Keep this entire folder intact** - Every component is essential
-2. **Ensure the database file is present** - It contains all preserved knowledge
+2. **Ensure your database file (.db) is in this folder** - It contains all preserved knowledge
 3. **Open standalone.html in any browser** - Even old computers should work
 4. **Select your database when prompted**
 5. **Begin your search for knowledge** - Use keywords and topics to find what you need
 
-## Finding Your Way Through The Darkness
+## Contents of This Archive
 
-- This archive works completely offline - no external connections needed
-- Any functioning computer with a browser can access this knowledge
-- No installation or technical expertise required
-- Search by keywords or browse by topics to find critical information
-- The knowledge within may save lives - use it wisely
+- `standalone.html` - The main application for accessing knowledge
+- `sql-wasm.js` - Technical component that makes database access possible
+- Your `.db` database file - Contains the actual archived information
+
+## Features
+
+- **Works completely offline** - No internet connection needed
+- **No installation required** - Just open the HTML file in any browser
+- **Powerful search capability** - Find knowledge by keywords or topics
+- **Topic filtering** - Focus on specific categories of knowledge
+- **Universal compatibility** - Works on any device with a web browser
+- **Psychological support** - Includes wisdom quotes for difficult times
+
+## Primary vs. Emergency Usage
+
+### Everyday Use
+This standalone reader is the primary interface for WorldEndArchive. Even during normal times, you should use this application to search and browse archived knowledge.
+
+### Emergency Use
+In crisis situations, this standalone application becomes even more valuable:
+- It requires minimal computing resources
+- Works on virtually any device with a web browser
+- Needs no network connectivity
+- Can run from any storage medium (USB drives, SD cards, etc.)
 
 ## For Those Who Find This Archive
 

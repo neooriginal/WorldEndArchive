@@ -22,10 +22,10 @@
 
 - [Overview](#-overview)
 - [Features](#-features)
+- [System Architecture](#-system-architecture)
 - [Installation](#-installation)
 - [Usage](#-usage)
 - [Configuration](#-configuration)
-- [Architecture](#-architecture)
 - [Content Filtering](#-content-filtering)
 - [Contributing](#-contributing)
 - [Emergency Usage](#-emergency-usage)
@@ -49,6 +49,24 @@ The internet contains humanity's accumulated wisdom, but its accessibility depen
 - **🖥️ Post-Apocalyptic UI**: Terminal-inspired interface with CRT effects and nuclear aesthetics
 - **🔌 Offline Operation**: Works entirely offline once content is archived
 - **🗄️ Persistent Storage**: SQLite3 database for reliable, portable storage
+
+## 🏗️ System Architecture
+
+WorldEndArchive uses a two-component architecture:
+
+1. **Crawler Component** (`Main Application`)
+   - Handles web crawling and content archiving
+   - Builds and maintains the SQLite database
+   - Provides database download functionality
+   - Runs as a Node.js application
+
+2. **Reader Component** (`Standalone Application`)
+   - Provides search and retrieval functionality
+   - Works completely offline without server components
+   - Can be used with any web browser
+   - Located in the `/standalone` folder
+
+This separation ensures that the knowledge archiving process can run on a powerful server, while the knowledge retrieval can be performed on any device with a browser, even in offline scenarios.
 
 ## 🚀 Installation
 
@@ -78,20 +96,19 @@ The internet contains humanity's accumulated wisdom, but its accessibility depen
 
 ## 🔨 Usage
 
-### Starting the application
+### Running the Crawler
 
-Simply run:
+To start the web crawler and build your knowledge archive:
 
 ```bash
 npm start
 ```
 
 This will:
-1. Start the web server on port 3000 (or the port specified in your .env file)
+1. Start the server on port 3000 (or the port specified in your .env file)
 2. Begin automatically crawling the web using recommended seed sites
 3. Continue crawling until the database reaches 8GB in size
-
-Visit `http://localhost:3000` to access the interface.
+4. Serve the standalone app at http://localhost:3000 for browsing the archive
 
 ### Manual crawling (optional)
 
@@ -103,40 +120,24 @@ npm run crawl-only https://example.com https://anothersite.org
 
 This will override the automatic crawling process.
 
-### Database maintenance
+### Accessing Your Archive
 
-To optimize the database and reclaim space:
+Once the crawler has collected knowledge:
 
-```bash
-npm run vacuum
-```
+1. **Web Interface**: Visit `http://localhost:3000` to access the standalone reader in your browser
+2. **Download Database**: Use the download button to save the database file
+3. **Offline Access**: Copy the `/standalone` folder and your database file to any storage device
 
-### Standalone Apocalypse Mode
+### Standalone Mode
 
-For offline use without any dependencies (ideal for disaster preparation):
+For complete offline usage:
 
-1. Download your database using the download button in the UI
-2. Copy the entire `/standalone` folder to your USB drive along with the database
-3. Open `standalone/standalone.html` in any modern browser
-4. Select your downloaded database file to load and search through the archived content
+1. Copy the entire `/standalone` folder to your storage medium (USB drive, etc.)
+2. Add your database file to the same location
+3. Open `standalone.html` in any modern web browser
+4. Select your database file when prompted
 
 This standalone mode works on any operating system with a web browser and requires no installation or internet connection. **Consider creating multiple copies on different storage media for redundancy.**
-
-#### How Standalone Mode Works
-
-The standalone version (`/standalone` folder) contains:
-
-- **standalone.html**: A self-contained HTML application with embedded CSS and JavaScript
-- **sql-wasm.js**: A fallback library for handling SQLite databases in the browser
-
-The application is designed to work completely offline by:
-- Loading and querying SQLite databases directly in the browser
-- Using IndexedDB for temporary storage when needed
-- Not requiring any server components or installation
-- Supporting searching by keywords and topics
-- Working on any device with a modern browser
-
-If you're preparing for a scenario without internet access, copying this folder along with your database to multiple storage devices provides a redundant way to access your archived knowledge.
 
 ## ⚙️ Configuration
 
@@ -149,15 +150,6 @@ Key configuration options in `.env`:
 | `ALLOWED_DOMAINS` | Restrict crawling to specific domains (comma-separated) |
 | `EXCLUDED_DOMAINS` | Domains to exclude from crawling |
 | `MAX_DB_SIZE_MB` | Maximum database size in MB (default: 8192) |
-
-## 🏗️ Architecture
-
-- **Crawler**: `crawler.js` - Handles website traversal and content extraction
-- **Classifier**: `classifier.js` - Analyzes and categorizes content by topic
-- **Compression**: `compression.js` - Compresses content with LZMA
-- **Database**: `database.js` - Manages SQLite storage and retrieval
-- **API**: `api.js` - Provides the search and content retrieval endpoints
-- **Frontend**: `/public` - Contains the user interface
 
 ## 🧩 Content Filtering
 
@@ -189,11 +181,10 @@ Contributions are welcome! This project represents a collective effort to preser
 
 In case of severe infrastructure disruption or societal instability:
 
-1. Use battery, solar, or generator power to run a computer with this software
-2. Start the server: `npm start` (if Node.js is available)
-3. Access knowledge through the web interface at http://localhost:3000
-4. If Node.js is unavailable, use the standalone version in the `/standalone` folder
-5. Share your knowledge database with trusted communities to strengthen collective resilience
+1. Use battery, solar, or generator power to run a computer
+2. Access the standalone version in the `/standalone` folder directly with any browser
+3. If you have multiple storage locations, use the database file with the most recent date
+4. Share your knowledge database with trusted communities to strengthen collective resilience
 
 Remember: Information that seems mundane today may be irreplaceable tomorrow.
 
@@ -206,6 +197,8 @@ This means:
 - ✅ You can adapt, remix, transform, and build upon the material
 - ⛔ You cannot use the material for commercial purposes
 - ⚠️ You must give appropriate credit and indicate if changes were made
+
+The license includes a special provision that, in the event of global crisis or civilization collapse, all copyright restrictions are suspended, making the knowledge freely available to all of humanity.
 
 See the [LICENSE](./LICENSE) file for details.
 

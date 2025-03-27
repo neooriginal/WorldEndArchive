@@ -437,9 +437,15 @@
     async function initSqlJs() {
       try {
         statusBar.textContent = "Initializing SQL.js...";
-        window.SQL = await initSqlJs({
+        
+        // Fix the recursive call that's causing the error
+        const SQL = await window.initSqlJs({
           locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
         });
+        
+        // Store SQL constructor on the window object
+        window.SQL = SQL;
+        
         statusBar.textContent = "Ready. Load a database file to start.";
       } catch (err) {
         statusBar.textContent = "Error loading SQL.js. Switching to offline version.";

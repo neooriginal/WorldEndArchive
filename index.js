@@ -31,8 +31,90 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// API routes
-app.use('/api', api);
+// API routes - simplified to only provide database download
+app.get('/api/download-db', (req, res) => {
+  try {
+    const dbPath = path.join(__dirname, 'data', 'worldend_archive.db');
+    
+    // Check if database exists
+    if (!fs.existsSync(dbPath)) {
+      return res.status(404).json({ error: 'Database file not found' });
+    }
+    
+    // Get file size
+    const stats = fs.statSync(dbPath);
+    const fileSizeInBytes = stats.size;
+    
+    // Set headers for download
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', 'attachment; filename=worldend_archive.db');
+    res.setHeader('Content-Length', fileSizeInBytes);
+    
+    // Create read stream and pipe to response
+    const fileStream = fs.createReadStream(dbPath);
+    fileStream.pipe(res);
+    
+    fileStream.on('error', (error) => {
+      console.error('Database download error:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Error streaming database file' });
+      }
+    });
+  } catch (error) {
+    console.error('Database download error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Serve the standalone app at the root
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'standalone', 'standalone.html'));
+});
+
+// Serve sql-wasm.js file
+app.get('/sql-wasm.js', (req, res) => {
+  res.sendFile(path.join(__dirname, 'standalone', 'sql-wasm.js'));
+});
+
+// Serve the "Use standalone version" page for any other route
+app.get('*', (req, res) => {
+  res.send(`
+    <html>
+      <head>
+        <title>WorldEndArchive - Crawler Mode</title>
+        <style>
+          body {
+            font-family: monospace;
+            background-color: #0c0c0c;
+            color: #33ff33;
+            text-align: center;
+            padding: 50px;
+            line-height: 1.6;
+          }
+          h1 { color: #ff8c33; }
+          a {
+            color: #33ff33;
+            text-decoration: none;
+            border: 1px solid #33ff33;
+            padding: 10px 20px;
+            display: inline-block;
+            margin-top: 20px;
+            border-radius: 3px;
+          }
+          a:hover { background-color: rgba(51, 255, 51, 0.2); }
+        </style>
+      </head>
+      <body>
+        <h1>WorldEndArchive - Crawler Mode</h1>
+        <p>This instance is in crawler-only mode.</p>
+        <p>To search and browse the archive, please use the standalone version.</p>
+        <a href="/">Go to Standalone Version</a>
+        <p>Or download the database file to use with the offline standalone version:</p>
+        <a href="/api/download-db">Download Database</a>
+      </body>
+    </html>
+  `);
+});
 
 /**
  * Initialize the application
