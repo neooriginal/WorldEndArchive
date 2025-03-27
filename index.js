@@ -4,12 +4,14 @@
  */
 
 require('dotenv').config();
-const { initializeDatabase, getStats } = require('./database');
+const { initializeDatabase, getStats, saveCrawlerStats } = require('./database');
 const { startCrawler, getRecommendedSeeds, CONFIG, getQueueSize } = require('./crawler');
 const api = require('./api');
 const path = require('path');
 const fs = require('fs');
 const express = require('express');
+const { Database } = require('sqlite3');
+const axios = require('axios');
 
 // Configuration
 const DEFAULT_PORT = process.env.PORT || 3000;
@@ -137,7 +139,7 @@ async function init() {
   console.log('WorldEndArchive initialized successfully');
   console.log(`Server running at http://localhost:${DEFAULT_PORT}`);
   
-  // Start crawler automatically
+  // Start crawler automatically, continuing from where it left off
   await startAutomaticCrawler();
 }
 
@@ -168,8 +170,8 @@ function updateCrawlerStats(additionalStats = {}) {
     lastCrawlSpeed = crawlSpeed;
   }
   
-  // Update API with current stats
-  api.updateCrawlerStats({
+  // Create stats object
+  const stats = {
     isRunning: crawlerRunning,
     lastStartTime: crawlStartTime,
     processedUrls: pagesProcessed,
@@ -179,6 +181,14 @@ function updateCrawlerStats(additionalStats = {}) {
     startTime: crawlStartTime,
     totalRuntime: totalRuntime + (crawlStartTime ? runtime : 0),
     ...additionalStats
+  };
+
+  // Save stats to database for persistence
+  saveCrawlerStats({
+    processed_pages: pagesProcessed.toString(),
+    failed_pages: pagesFailed.toString(),
+    total_runtime: (totalRuntime + (crawlStartTime ? runtime : 0)).toString(),
+    last_crawl_date: new Date().toISOString()
   });
 }
 
@@ -193,13 +203,45 @@ async function startAutomaticCrawler() {
   
   console.log('Starting automatic crawler...');
   
-  // Get recommended seed URLs
-  const seedUrls = getRecommendedSeeds();
+  // Check if there are pending URLs in the queue
+  const queueSize = await getQueueSize();
+  let seedUrls = [];
+  
+  if (queueSize > 0) {
+    console.log(`Found ${queueSize} URLs in the queue from previous run, continuing...`);
+    // The crawler will pick up pending URLs from the queue automatically
+  } else {
+    console.log('Queue is empty, starting with recommended seed URLs');
+    // Get recommended seed URLs if queue is empty
+    seedUrls = getRecommendedSeeds();
+  }
+  
+  // Get database stats for counters
+  try {
+    const stats = await getStats();
+    
+    // Initialize counters from database stats
+    if (stats.processed_pages) {
+      pagesProcessed = parseInt(stats.processed_pages) || 0;
+    }
+    
+    if (stats.failed_pages) {
+      pagesFailed = parseInt(stats.failed_pages) || 0;
+    }
+    
+    if (stats.total_runtime) {
+      totalRuntime = parseInt(stats.total_runtime) || 0;
+    }
+    
+    console.log(`Resuming with stats: ${pagesProcessed} processed, ${pagesFailed} failed, ${totalRuntime}s runtime`);
+  } catch (error) {
+    console.log('No previous stats found, starting fresh');
+  }
   
   // Reset counter for new crawler run
   crawlStartTime = Date.now();
   crawlerRunning = true;
-  updateCrawlerStats({ lastProcessedUrl: null, queueSize: seedUrls.length });
+  updateCrawlerStats({ lastProcessedUrl: null, queueSize: queueSize || seedUrls.length });
   
   // Track crawler events with callbacks
   const crawlerCallbacks = {
@@ -209,6 +251,8 @@ async function startAutomaticCrawler() {
       } else {
         pagesFailed++;
       }
+      
+      // Stats will be persisted through updateCrawlerStats
       updateCrawlerStats({ lastProcessedUrl: url });
     },
     onQueueUpdate: (queueSize) => {

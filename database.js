@@ -260,6 +260,29 @@ function vacuumDatabase() {
   db.pragma('vacuum');
 }
 
+/**
+ * Save crawler statistics to the database
+ * @param {Object} stats - Statistics to save
+ */
+function saveCrawlerStats(stats) {
+  try {
+    const updateSetting = db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
+    
+    // Use transaction for better performance
+    db.transaction(() => {
+      // Save each statistic to the settings table
+      for (const [key, value] of Object.entries(stats)) {
+        updateSetting.run(key, value.toString());
+      }
+    })();
+    
+    return true;
+  } catch (error) {
+    console.error('Error saving crawler stats:', error);
+    return false;
+  }
+}
+
 module.exports = {
   initializeDatabase,
   insertPage,
@@ -272,5 +295,6 @@ module.exports = {
   urlExists,
   queueExists,
   getStats,
-  vacuumDatabase
+  vacuumDatabase,
+  saveCrawlerStats
 }; 
