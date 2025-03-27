@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WorldEndArchive - Knowledge Preservation System</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  
+  <!-- Styles -->
+  <link rel="stylesheet" href="/css/styles.css">
+  
+  <!-- Favicon -->
+  <link rel="icon" href="/images/radiation.svg" type="image/svg+xml">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header>
+      <div class="logo">
+        <div class="icon-radiation"></div>
+        <h1>WorldEndArchive</h1>
+      </div>
+      <p class="tagline">KNOWLEDGE PRESERVATION SYSTEM · PREPARING FOR CIVILIZATION'S COLLAPSE</p>
+    </header>
+    
+    <!-- Main Content -->
+    <main>
+      <!-- Search Panel -->
+      <div class="terminal-panel">
+        <div class="panel-header">
+          <div class="panel-title">INFORMATION RETRIEVAL SYSTEM</div>
+          <div class="panel-controls">
+            <div class="panel-control control-close"></div>
+            <div class="panel-control control-minimize"></div>
+            <div class="panel-control control-maximize"></div>
+          </div>
+        </div>
+        <div class="panel-body">
+          <!-- Search Input -->
+          <div class="search-container">
+            <input type="text" id="search-input" class="search-input" placeholder="ENTER QUERY...">
+            <button id="search-button" class="search-button">SCAN</button>
+          </div>
+          
+          <!-- Topics Filter -->
+          <div id="topics-container" class="topics-container">
+            <!-- Topics will be populated by JavaScript -->
+          </div>
+        </div>
+      </div>
+      
+      <!-- Results Panel -->
+      <div class="terminal-panel" style="margin-top: 20px;">
+        <div class="panel-header">
+          <div class="panel-title">ARCHIVE RECORDS</div>
+          <div class="panel-controls">
+            <div class="panel-control control-close"></div>
+            <div class="panel-control control-minimize"></div>
+            <div class="panel-control control-maximize"></div>
+          </div>
+        </div>
+        <div class="panel-body">
+          <!-- Results Header -->
+          <div class="results-header">
+            <div id="results-count" class="results-count">
+              <span class="count-label">FOUND</span>
+              <em>0</em>
+              <span class="count-suffix">RECORDS</span>
+            </div>
+          </div>
+          
+          <!-- Loading Indicator -->
+          <div id="loading" class="loading" style="display: none;"></div>
+          
+          <!-- No Results Message -->
+          <div id="no-results" class="no-results">
+            NO MATCHING RECORDS IN ARCHIVE
+          </div>
+          
+          <!-- Results List -->
+          <div id="results-list" class="results-container">
+            <!-- Results will be populated by JavaScript -->
+          </div>
+        </div>
+      </div>
+      
+      <!-- Stats Panel -->
+      <div class="terminal-panel" style="margin-top: 20px;">
+        <div class="panel-header">
+          <div class="panel-title">SYSTEM STATUS</div>
+          <div class="panel-controls">
+            <div class="panel-control control-close"></div>
+            <div class="panel-control control-minimize"></div>
+            <div class="panel-control control-maximize"></div>
+          </div>
+        </div>
+        <div class="panel-body">
+          <!-- Stats Cards -->
+          <div id="stats-container" class="stats-container">
+            <div class="stat-card">
+              <div class="stat-title">ARCHIVED PAGES</div>
+              <div id="total-pages" class="stat-value">0</div>
+            </div>
+            
+            <div class="stat-card">
+              <div class="stat-title">RAW DATA VOLUME</div>
+              <div id="total-size-raw" class="stat-value">0 B</div>
+            </div>
+            
+            <div class="stat-card">
+              <div class="stat-title">COMPRESSED VOLUME</div>
+              <div id="total-size-compressed" class="stat-value">0 B</div>
+            </div>
+            
+            <div class="stat-card">
+              <div class="stat-title">COMPRESSION RATIO</div>
+              <div id="compression-ratio" class="stat-value">0:0</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+    
+    <!-- Footer -->
+    <footer>
+      <div class="footer-content">
+        <div id="system-status" class="system-status">
+          <span class="status-indicator status-online"></span>
+          <span>SYSTEM OPERATIONAL</span>
+        </div>
+        <div class="last-crawl">
+          LAST DATA COLLECTION: <span id="last-crawl">NEVER</span>
+        </div>
+      </div>
+    </footer>
+    
+    <!-- Content Viewer (Hidden by default) -->
+    <div id="content-viewer" class="content-viewer">
+      <div class="content-panel">
+        <div class="content-header">
+          <h2 id="content-title" class="content-title">Archived Content</h2>
+          <button id="content-close" class="content-close">×</button>
+        </div>
+        <div id="content-body" class="content-body">
+          <!-- Content will be loaded here -->
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- JavaScript -->
+  <script src="/js/app.js"></script>
+</body>
+</html> 
