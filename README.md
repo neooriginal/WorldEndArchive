@@ -105,6 +105,33 @@ To optimize the database and reclaim space:
 npm run vacuum
 ```
 
+### Standalone Apocalypse Mode
+
+For offline use without any dependencies (ideal for USB storage):
+
+1. Download your database using the download button in the UI
+2. Copy the entire `/standalone` folder to your USB drive along with the database
+3. Open `standalone/standalone.html` in any modern browser
+4. Select your downloaded database file to load and search through the archived content
+
+This standalone mode works on any operating system with a web browser and requires no installation or internet connection.
+
+#### How Standalone Mode Works
+
+The standalone version (`/standalone` folder) contains:
+
+- **standalone.html**: A self-contained HTML application with embedded CSS and JavaScript
+- **sql-wasm.js**: A fallback library for handling SQLite databases in the browser
+
+The application is designed to work completely offline by:
+- Loading and querying SQLite databases directly in the browser
+- Using IndexedDB for temporary storage when needed
+- Not requiring any server components or installation
+- Supporting searching by keywords and topics
+- Working on any device with a modern browser
+
+If you're preparing for a scenario without internet access, copying this folder along with your database to multiple storage devices provides a redundant way to access your archived knowledge.
+
 ## ⚙️ Configuration
 
 Key configuration options in `.env`:

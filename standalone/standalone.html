@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WorldEndArchive - Apocalypse Mode</title>
+  <style>
+    :root {
+      --bg-color: #0c0c0c;
+      --text-color: #33ff33;
+      --accent-color: #ff5733;
+      --header-color: #ff8c33;
+      --border-color: #444;
+      --panel-bg: rgba(0, 20, 0, 0.7);
+    }
+    
+    body {
+      font-family: monospace, 'Courier New', Courier;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      margin: 0;
+      padding: 0;
+      line-height: 1.6;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      max-width: 100%;
+      overflow-x: hidden;
+    }
+    
+    .crt-effect {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(rgba(10, 20, 10, 0.1) 50%, rgba(0, 0, 0, 0.2) 50%);
+      background-size: 100% 4px;
+      z-index: 100;
+      pointer-events: none;
+      opacity: 0.15;
+    }
+    
+    .crt-lines:before {
+      content: " ";
+      display: block;
+      position: fixed;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      right: 0;
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+      z-index: 100;
+      background-size: 100% 2px, 3px 100%;
+      pointer-events: none;
+    }
+    
+    .app-container {
+      width: 90%;
+      max-width: 1200px;
+      margin: 20px auto;
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      position: relative;
+      z-index: 1;
+    }
+    
+    header {
+      text-align: center;
+      padding: 20px;
+      border-bottom: 1px solid var(--border-color);
+      margin-bottom: 20px;
+    }
+    
+    h1 {
+      color: var(--header-color);
+      font-size: 2.5em;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      text-shadow: 0 0 10px rgba(255, 140, 51, 0.5);
+    }
+    
+    h2 {
+      color: var(--accent-color);
+      font-size: 1.5em;
+      margin-top: 0;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 5px;
+    }
+    
+    .db-selection {
+      background-color: var(--panel-bg);
+      padding: 20px;
+      border-radius: 5px;
+      box-shadow: 0 0 15px rgba(0, 30, 0, 0.8);
+      margin-bottom: 20px;
+      border: 1px solid var(--border-color);
+    }
+    
+    .search-panel {
+      background-color: var(--panel-bg);
+      padding: 20px;
+      border-radius: 5px;
+      box-shadow: 0 0 15px rgba(0, 30, 0, 0.8);
+      margin-bottom: 20px;
+      border: 1px solid var(--border-color);
+      display: none;
+    }
+    
+    .results-panel {
+      background-color: var(--panel-bg);
+      padding: 20px;
+      border-radius: 5px;
+      box-shadow: 0 0 15px rgba(0, 30, 0, 0.8);
+      margin-bottom: 20px;
+      border: 1px solid var(--border-color);
+      flex: 1;
+      display: none;
+      overflow-y: auto;
+      max-height: 60vh;
+    }
+    
+    .content-panel {
+      background-color: var(--panel-bg);
+      padding: 20px;
+      border-radius: 5px;
+      box-shadow: 0 0 15px rgba(0, 30, 0, 0.8);
+      margin-bottom: 20px;
+      border: 1px solid var(--border-color);
+      display: none;
+      overflow-y: auto;
+      max-height: 70vh;
+    }
+    
+    .status-bar {
+      background-color: var(--panel-bg);
+      padding: 10px;
+      border-radius: 5px;
+      box-shadow: 0 0 15px rgba(0, 30, 0, 0.8);
+      margin-top: auto;
+      font-size: 0.9em;
+      border: 1px solid var(--border-color);
+    }
+    
+    button, input[type="file"], select {
+      background-color: #0c1c0c;
+      color: var(--text-color);
+      border: 1px solid var(--border-color);
+      padding: 8px 15px;
+      margin: 5px 0;
+      border-radius: 3px;
+      font-family: monospace;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    
+    button:hover {
+      background-color: #1c2c1c;
+      box-shadow: 0 0 5px var(--text-color);
+    }
+    
+    input[type="text"], input[type="search"] {
+      background-color: #0c1c0c;
+      color: var(--text-color);
+      border: 1px solid var(--border-color);
+      padding: 8px 15px;
+      margin: 5px 0;
+      border-radius: 3px;
+      font-family: monospace;
+      width: 100%;
+    }
+    
+    .loader {
+      border: 5px solid var(--border-color);
+      border-top: 5px solid var(--header-color);
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 20px auto;
+      display: none;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    .result-item {
+      padding: 10px;
+      margin-bottom: 10px;
+      border: 1px solid var(--border-color);
+      border-radius: 3px;
+      background-color: rgba(0, 0, 0, 0.2);
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    
+    .result-item:hover {
+      background-color: rgba(0, 50, 0, 0.3);
+      border-color: var(--accent-color);
+    }
+    
+    .result-title {
+      color: var(--accent-color);
+      font-weight: bold;
+      font-size: 1.1em;
+      margin-bottom: 5px;
+    }
+    
+    .result-url {
+      font-size: 0.8em;
+      color: #999;
+      word-break: break-all;
+    }
+    
+    .topic-tag {
+      display: inline-block;
+      background-color: rgba(51, 255, 51, 0.2);
+      color: var(--text-color);
+      padding: 2px 6px;
+      margin: 2px;
+      border-radius: 3px;
+      font-size: 0.8em;
+    }
+    
+    .db-info {
+      font-size: 0.9em;
+      margin-top: 10px;
+      display: none;
+    }
+    
+    .info-item {
+      display: flex;
+      justify-content: space-between;
+      border-bottom: 1px dashed var(--border-color);
+      padding: 3px 0;
+    }
+    
+    .back-btn {
+      margin-bottom: 10px;
+    }
+    
+    #contentView {
+      background-color: #f8f8f8;
+      color: #333;
+      padding: 20px;
+      border-radius: 5px;
+      max-width: 100%;
+      overflow-x: auto;
+    }
+    
+    #topicsFilter {
+      margin: 10px 0;
+    }
+    
+    footer {
+      text-align: center;
+      padding: 20px;
+      font-size: 0.8em;
+      margin-top: 20px;
+      border-top: 1px solid var(--border-color);
+    }
+    
+    .search-options {
+      display: flex;
+      gap: 10px;
+      margin: 10px 0;
+    }
+    
+    @media (max-width: 768px) {
+      .app-container {
+        width: 95%;
+      }
+      
+      .search-options {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="crt-effect"></div>
+  <div class="crt-lines"></div>
+  
+  <div class="app-container">
+    <header>
+      <h1>WorldEndArchive</h1>
+      <p>Apocalypse Mode - Standalone Knowledge Retrieval</p>
+    </header>
+    
+    <div class="db-selection" id="dbSelector">
+      <h2>Load Database</h2>
+      <p>Select your WorldEndArchive database file (.db):</p>
+      <input type="file" id="dbFile" accept=".db">
+      <div class="loader" id="dbLoader"></div>
+      <div class="db-info" id="dbInfo">
+        <div class="info-item">
+          <span>Total Pages:</span>
+          <span id="totalPages">0</span>
+        </div>
+        <div class="info-item">
+          <span>Topics:</span>
+          <span id="topicsList">-</span>
+        </div>
+        <div class="info-item">
+          <span>Database Size:</span>
+          <span id="dbSize">0 MB</span>
+        </div>
+        <div class="info-item">
+          <span>Last Updated:</span>
+          <span id="lastUpdate">-</span>
+        </div>
+      </div>
+    </div>
+    
+    <div class="search-panel" id="searchPanel">
+      <h2>Search Archived Knowledge</h2>
+      <input type="search" id="searchInput" placeholder="Enter search terms...">
+      
+      <div class="search-options">
+        <div>
+          <label for="topicsFilter">Filter by topic:</label>
+          <select id="topicsFilter" multiple>
+            <!-- Topics will be populated from the database -->
+          </select>
+        </div>
+        <div>
+          <button id="searchBtn">Search</button>
+          <button id="clearBtn">Clear</button>
+        </div>
+      </div>
+    </div>
+    
+    <div class="results-panel" id="resultsPanel">
+      <h2>Search Results</h2>
+      <div id="resultsCount"></div>
+      <div id="resultsList"></div>
+    </div>
+    
+    <div class="content-panel" id="contentPanel">
+      <button class="back-btn" id="backBtn">← Back to Results</button>
+      <h2 id="contentTitle">Content</h2>
+      <div id="contentMeta"></div>
+      <div id="contentView"></div>
+    </div>
+    
+    <div class="status-bar" id="statusBar">
+      Ready. Load a database file to start.
+    </div>
+  </div>
+  
+  <footer>
+    <p>WorldEndArchive - Offline Knowledge Preservation System</p>
+    <p>License: <a href="http://creativecommons.org/licenses/by-nc/4.0/" style="color: var(--text-color);">CC BY-NC 4.0</a></p>
+  </footer>
+  
+  <!-- SQLite library for the browser -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+  <script>
+    // Initialize variables
+    let db = null;
+    let dbInfo = {};
+    let currentSearchResults = [];
+    let availableTopics = [];
+    
+    // DOM elements
+    const dbSelector = document.getElementById('dbSelector');
+    const dbFile = document.getElementById('dbFile');
+    const dbLoader = document.getElementById('dbLoader');
+    const dbInfoDiv = document.getElementById('dbInfo');
+    const searchPanel = document.getElementById('searchPanel');
+    const resultsPanel = document.getElementById('resultsPanel');
+    const contentPanel = document.getElementById('contentPanel');
+    const searchInput = document.getElementById('searchInput');
+    const searchBtn = document.getElementById('searchBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const resultsList = document.getElementById('resultsList');
+    const resultsCount = document.getElementById('resultsCount');
+    const statusBar = document.getElementById('statusBar');
+    const topicsFilter = document.getElementById('topicsFilter');
+    const contentTitle = document.getElementById('contentTitle');
+    const contentMeta = document.getElementById('contentMeta');
+    const contentView = document.getElementById('contentView');
+    const backBtn = document.getElementById('backBtn');
+    
+    // Load SQL.js
+    initSqlJs();
+    
+    async function initSqlJs() {
+      try {
+        statusBar.textContent = "Initializing SQL.js...";
+        
+        // Load SQL.js dynamically
+        window.SQL = await initSqlJs({
+          locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
+        });
+        
+        statusBar.textContent = "Ready. Load a database file to start.";
+      } catch (err) {
+        statusBar.textContent = "Error loading SQL.js: " + err.message;
+        console.error(err);
+      }
+    }
+    
+    // Handle database file selection
+    dbFile.addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      
+      loadDatabase(file);
+    });
+    
+    async function loadDatabase(file) {
+      try {
+        dbLoader.style.display = 'block';
+        statusBar.textContent = "Loading database...";
+        
+        // Read the file
+        const reader = new FileReader();
+        
+        reader.onload = async function() {
+          try {
+            // Initialize database from the file
+            const uInt8Array = new Uint8Array(reader.result);
+            db = new SQL.Database(uInt8Array);
+            
+            // Get database info
+            dbInfo = getDbInfo();
+            
+            // Display database info
+            displayDbInfo();
+            
+            // Get available topics
+            loadTopics();
+            
+            // Show search panel
+            searchPanel.style.display = 'block';
+            dbInfoDiv.style.display = 'block';
+            
+            statusBar.textContent = `Database loaded. ${dbInfo.totalPages} pages available.`;
+          } catch (err) {
+            statusBar.textContent = "Error processing database: " + err.message;
+            console.error(err);
+          } finally {
+            dbLoader.style.display = 'none';
+          }
+        };
+        
+        reader.onerror = function() {
+          statusBar.textContent = "Error reading file.";
+          dbLoader.style.display = 'none';
+        };
+        
+        reader.readAsArrayBuffer(file);
+      } catch (err) {
+        statusBar.textContent = "Error loading database: " + err.message;
+        dbLoader.style.display = 'none';
+        console.error(err);
+      }
+    }
+    
+    function getDbInfo() {
+      try {
+        // Get total pages
+        const totalPagesResult = db.exec("SELECT COUNT(*) as count FROM pages")[0];
+        const totalPages = totalPagesResult.values[0][0];
+        
+        // Get settings
+        const settingsResult = db.exec("SELECT key, value FROM settings");
+        const settings = {};
+        
+        if (settingsResult.length > 0) {
+          settingsResult[0].values.forEach(row => {
+            settings[row[0]] = row[1];
+          });
+        }
+        
+        // Get file size (not available directly, approximation)
+        const dbSizeBytes = file ? file.size : 0;
+        const dbSizeMB = (dbSizeBytes / (1024 * 1024)).toFixed(2);
+        
+        return {
+          totalPages,
+          lastUpdated: settings.last_crawl_date || 'Unknown',
+          dbSizeMB,
+          settings
+        };
+      } catch (err) {
+        console.error("Error getting DB info:", err);
+        return {
+          totalPages: 0,
+          lastUpdated: 'Unknown',
+          dbSizeMB: 0,
+          settings: {}
+        };
+      }
+    }
+    
+    function displayDbInfo() {
+      document.getElementById('totalPages').textContent = dbInfo.totalPages;
+      document.getElementById('lastUpdate').textContent = formatDate(dbInfo.lastUpdated);
+      document.getElementById('dbSize').textContent = `${dbInfo.dbSizeMB} MB`;
+    }
+    
+    function loadTopics() {
+      try {
+        // Get all unique topics
+        const topicsResult = db.exec("SELECT DISTINCT topic FROM page_topics ORDER BY topic");
+        
+        if (topicsResult.length > 0) {
+          availableTopics = topicsResult[0].values.map(row => row[0]);
+          
+          // Update topics list in the info panel
+          document.getElementById('topicsList').textContent = availableTopics.join(', ');
+          
+          // Populate topics filter dropdown
+          topicsFilter.innerHTML = '';
+          availableTopics.forEach(topic => {
+            const option = document.createElement('option');
+            option.value = topic;
+            option.textContent = topic.charAt(0).toUpperCase() + topic.slice(1);
+            topicsFilter.appendChild(option);
+          });
+        }
+      } catch (err) {
+        console.error("Error loading topics:", err);
+      }
+    }
+    
+    // Search functionality
+    searchBtn.addEventListener('click', performSearch);
+    searchInput.addEventListener('keyup', function(e) {
+      if (e.key === 'Enter') {
+        performSearch();
+      }
+    });
+    
+    clearBtn.addEventListener('click', function() {
+      searchInput.value = '';
+      topicsFilter.selectedIndex = -1;
+      resultsPanel.style.display = 'none';
+      contentPanel.style.display = 'none';
+      statusBar.textContent = `Database loaded. ${dbInfo.totalPages} pages available.`;
+    });
+    
+    function performSearch() {
+      if (!db) {
+        statusBar.textContent = "No database loaded.";
+        return;
+      }
+      
+      try {
+        const query = searchInput.value.trim();
+        
+        // Get selected topics
+        const selectedTopics = Array.from(topicsFilter.selectedOptions).map(option => option.value);
+        
+        // Build SQL query
+        let sql = `
+          SELECT p.id, p.url, p.title, p.date_archived,
+                 GROUP_CONCAT(pt.topic) as topics
+          FROM pages p
+        `;
+        
+        const params = [];
+        
+        if (selectedTopics.length > 0) {
+          sql += `
+            JOIN page_topics pt ON p.id = pt.page_id
+            WHERE pt.topic IN (${selectedTopics.map(() => '?').join(',')})
+          `;
+          params.push(...selectedTopics);
+          
+          if (query) {
+            sql += ` AND (p.title LIKE ? OR p.url LIKE ?)`;
+            params.push(`%${query}%`, `%${query}%`);
+          }
+          
+          sql += ` GROUP BY p.id`;
+          
+          if (selectedTopics.length > 1) {
+            sql += ` HAVING COUNT(DISTINCT pt.topic) = ${selectedTopics.length}`;
+          }
+        } else if (query) {
+          sql += ` 
+            LEFT JOIN page_topics pt ON p.id = pt.page_id
+            WHERE (p.title LIKE ? OR p.url LIKE ?)
+            GROUP BY p.id
+          `;
+          params.push(`%${query}%`, `%${query}%`);
+        } else {
+          sql += ` 
+            LEFT JOIN page_topics pt ON p.id = pt.page_id
+            GROUP BY p.id
+            LIMIT 100
+          `;
+        }
+        
+        // Execute search
+        const stmt = db.prepare(sql);
+        params.forEach((param, index) => {
+          stmt.bind({[`$${index+1}`]: param});
+        });
+        
+        const results = [];
+        while (stmt.step()) {
+          const row = stmt.getAsObject();
+          results.push({
+            id: row.id,
+            url: row.url,
+            title: row.title || row.url,
+            date: row.date_archived,
+            topics: row.topics ? row.topics.split(',') : []
+          });
+        }
+        
+        // Store results and display them
+        currentSearchResults = results;
+        displaySearchResults(results);
+        
+        statusBar.textContent = `Found ${results.length} results for "${query}"`;
+      } catch (err) {
+        statusBar.textContent = "Error performing search: " + err.message;
+        console.error(err);
+      }
+    }
+    
+    function displaySearchResults(results) {
+      resultsList.innerHTML = '';
+      resultsCount.textContent = `Found ${results.length} results`;
+      
+      if (results.length === 0) {
+        resultsList.innerHTML = '<div class="result-item">No results found. Try different search terms or topics.</div>';
+        resultsPanel.style.display = 'block';
+        return;
+      }
+      
+      results.forEach(result => {
+        const resultItem = document.createElement('div');
+        resultItem.className = 'result-item';
+        resultItem.dataset.id = result.id;
+        
+        const titleEl = document.createElement('div');
+        titleEl.className = 'result-title';
+        titleEl.textContent = result.title || 'Untitled';
+        
+        const urlEl = document.createElement('div');
+        urlEl.className = 'result-url';
+        urlEl.textContent = result.url;
+        
+        const topicsEl = document.createElement('div');
+        if (result.topics && result.topics.length) {
+          result.topics.forEach(topic => {
+            const topicTag = document.createElement('span');
+            topicTag.className = 'topic-tag';
+            topicTag.textContent = topic;
+            topicsEl.appendChild(topicTag);
+          });
+        }
+        
+        resultItem.appendChild(titleEl);
+        resultItem.appendChild(urlEl);
+        resultItem.appendChild(topicsEl);
+        
+        resultItem.addEventListener('click', () => {
+          viewContent(result.id);
+        });
+        
+        resultsList.appendChild(resultItem);
+      });
+      
+      resultsPanel.style.display = 'block';
+    }
+    
+    function viewContent(id) {
+      try {
+        // Get page content
+        const contentResult = db.exec(`SELECT compressed_content, title, url FROM pages WHERE id = ${id}`);
+        
+        if (!contentResult || contentResult.length === 0 || contentResult[0].values.length === 0) {
+          statusBar.textContent = "Content not found.";
+          return;
+        }
+        
+        const [compressedContent, title, url] = contentResult[0].values[0];
+        
+        // Decompress content (if we had LZMA available - simplified in standalone)
+        // In a real implementation, you would need to include LZMA decompression
+        // For now, we'll just display a message about this limitation
+        
+        contentTitle.textContent = title || url;
+        contentMeta.innerHTML = `
+          <div class="result-url">${url}</div>
+          <div style="margin-top: 10px; color: var(--accent-color);">
+            Note: This standalone version cannot display the actual content due to decompression limitations.
+            Please use the full application to view the complete content.
+          </div>
+        `;
+        
+        // In a full implementation, you would decompress and show the content
+        contentView.innerHTML = '<div style="padding: 20px; background-color: #eee; text-align: center;">Content preview unavailable in standalone mode.</div>';
+        
+        contentPanel.style.display = 'block';
+        resultsPanel.style.display = 'none';
+        
+        statusBar.textContent = `Viewing: ${title || url}`;
+      } catch (err) {
+        statusBar.textContent = "Error retrieving content: " + err.message;
+        console.error(err);
+      }
+    }
+    
+    backBtn.addEventListener('click', function() {
+      contentPanel.style.display = 'none';
+      resultsPanel.style.display = 'block';
+      statusBar.textContent = `Showing ${currentSearchResults.length} search results`;
+    });
+    
+    // Helper functions
+    function formatDate(dateStr) {
+      if (!dateStr || dateStr === 'Unknown') return 'Unknown';
+      
+      try {
+        const date = new Date(dateStr);
+        return date.toLocaleString();
+      } catch (e) {
+        return dateStr;
+      }
+    }
+    
+    // Initialize SQL.js
+    async function initSqlJs() {
+      try {
+        statusBar.textContent = "Initializing SQL.js...";
+        window.SQL = await initSqlJs({
+          locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
+        });
+        statusBar.textContent = "Ready. Load a database file to start.";
+      } catch (err) {
+        statusBar.textContent = "Error loading SQL.js. Switching to offline version.";
+        console.error(err);
+        
+        // Try offline SQL.js load as fallback
+        const script = document.createElement('script');
+        script.src = 'sql-wasm.js'; // Local copy
+        document.head.appendChild(script);
+        
+        script.onload = function() {
+          statusBar.textContent = "Ready (offline mode). Load a database file to start.";
+        };
+        
+        script.onerror = function() {
+          statusBar.textContent = "Failed to load SQL.js. Please include sql-wasm.js in the same folder.";
+        };
+      }
+    }
+  </script>
+</body>
+</html> 
