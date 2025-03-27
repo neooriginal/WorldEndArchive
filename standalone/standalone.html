@@ -278,6 +278,44 @@
         flex-direction: column;
       }
     }
+    
+    .wisdom-container {
+      margin-top: 20px;
+      padding: 15px;
+      border: 1px solid var(--border-color);
+      border-radius: 5px;
+      background-color: rgba(0, 0, 0, 0.3);
+    }
+    
+    .wisdom-container h3 {
+      color: var(--header-color);
+      margin-top: 0;
+      font-size: 1.2em;
+      border-bottom: 1px dashed var(--border-color);
+      padding-bottom: 5px;
+    }
+    
+    .quote {
+      font-style: italic;
+      padding: 10px 5px;
+      margin: 10px 0;
+      border-left: 3px solid var(--accent-color);
+      padding-left: 15px;
+    }
+    
+    .quote-author {
+      display: block;
+      text-align: right;
+      font-size: 0.9em;
+      color: #888;
+      margin-top: 5px;
+    }
+    
+    .quote-btn {
+      background-color: rgba(30, 60, 30, 0.5);
+      font-size: 0.8em;
+      padding: 5px 10px;
+    }
   </style>
 </head>
 <body>
@@ -312,6 +350,14 @@
           <span>Last Updated:</span>
           <span id="lastUpdate">-</span>
         </div>
+      </div>
+      
+      <div class="wisdom-container">
+        <h3>Wisdom For Dark Times</h3>
+        <div class="quote" id="quoteDisplay">
+          <!-- Quotes will be displayed here -->
+        </div>
+        <button id="newQuoteBtn" class="quote-btn">New Quote</button>
       </div>
     </div>
     
@@ -391,16 +437,26 @@
     async function initSqlJs() {
       try {
         statusBar.textContent = "Initializing SQL.js...";
-        
-        // Load SQL.js dynamically
         window.SQL = await initSqlJs({
           locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
         });
-        
         statusBar.textContent = "Ready. Load a database file to start.";
       } catch (err) {
-        statusBar.textContent = "Error loading SQL.js: " + err.message;
+        statusBar.textContent = "Error loading SQL.js. Switching to offline version.";
         console.error(err);
+        
+        // Try offline SQL.js load as fallback
+        const script = document.createElement('script');
+        script.src = 'sql-wasm.js'; // Local copy
+        document.head.appendChild(script);
+        
+        script.onload = function() {
+          statusBar.textContent = "Ready (offline mode). Load a database file to start.";
+        };
+        
+        script.onerror = function() {
+          statusBar.textContent = "Failed to load SQL.js. Please include sql-wasm.js in the same folder.";
+        };
       }
     }
     
@@ -730,32 +786,90 @@
       }
     }
     
-    // Initialize SQL.js
-    async function initSqlJs() {
-      try {
-        statusBar.textContent = "Initializing SQL.js...";
-        window.SQL = await initSqlJs({
-          locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
-        });
-        statusBar.textContent = "Ready. Load a database file to start.";
-      } catch (err) {
-        statusBar.textContent = "Error loading SQL.js. Switching to offline version.";
-        console.error(err);
-        
-        // Try offline SQL.js load as fallback
-        const script = document.createElement('script');
-        script.src = 'sql-wasm.js'; // Local copy
-        document.head.appendChild(script);
-        
-        script.onload = function() {
-          statusBar.textContent = "Ready (offline mode). Load a database file to start.";
-        };
-        
-        script.onerror = function() {
-          statusBar.textContent = "Failed to load SQL.js. Please include sql-wasm.js in the same folder.";
-        };
+    // Quotes System
+    const quotes = [
+      {
+        text: "When everything seems to be going against you, remember that the airplane takes off against the wind, not with it.",
+        author: "Henry Ford"
+      },
+      {
+        text: "Do not judge me by my success, judge me by how many times I fell down and got back up again.",
+        author: "Nelson Mandela"
+      },
+      {
+        text: "The human capacity for burden is like bamboo – far more flexible than you'd ever believe at first glance.",
+        author: "Jodi Picoult"
+      },
+      {
+        text: "Knowledge, like air, is vital to life. Like air, no one should be denied it.",
+        author: "Alan Moore"
+      },
+      {
+        text: "Civilization is a race between education and catastrophe.",
+        author: "H.G. Wells"
+      },
+      {
+        text: "The library is the temple of learning, and learning has liberated more people than all the wars in history.",
+        author: "Carl Rowan"
+      },
+      {
+        text: "Hard times create strong people. Strong people create good times. Good times create weak people. And weak people create hard times.",
+        author: "G. Michael Hopf"
+      },
+      {
+        text: "Survival can be summed up in three words - never give up. That's the heart of it really. Just keep trying.",
+        author: "Bear Grylls"
+      },
+      {
+        text: "The nature of catastrophe is, after all, reasonably unvarying in the way it ruins, destroys, wounds and devastates. But if something can be learned from the event – not least something as profound as the theory of plate tectonics – then it somehow puts us on a diminished but more equal footing with nature.",
+        author: "Simon Winchester"
+      },
+      {
+        text: "A good half of the art of living is resilience.",
+        author: "Alain de Botton"
+      },
+      {
+        text: "The knowledge of all things is possible.",
+        author: "Leonardo da Vinci"
+      },
+      {
+        text: "Every civilization is, among its core assets, a legacy of knowledge.",
+        author: "Carl Sagan"
+      },
+      {
+        text: "What we know is a drop, what we don't know is an ocean.",
+        author: "Isaac Newton"
+      },
+      {
+        text: "I may not have gone where I intended to go, but I think I have ended up where I needed to be.",
+        author: "Douglas Adams"
+      },
+      {
+        text: "Hope is important because it can make the present moment less difficult to bear. If we believe that tomorrow will be better, we can bear a hardship today.",
+        author: "Thich Nhat Hanh"
       }
+    ];
+
+    // Quote display function
+    function displayRandomQuote() {
+      const quoteElement = document.getElementById('quoteDisplay');
+      const randomIndex = Math.floor(Math.random() * quotes.length);
+      const quote = quotes[randomIndex];
+      
+      quoteElement.innerHTML = `
+        "${quote.text}"
+        <span class="quote-author">- ${quote.author}</span>
+      `;
     }
+
+    // Initialize quote display and button
+    document.addEventListener('DOMContentLoaded', function() {
+      const newQuoteBtn = document.getElementById('newQuoteBtn');
+      if (newQuoteBtn) {
+        displayRandomQuote();
+        newQuoteBtn.addEventListener('click', displayRandomQuote);
+      }
+    });
   </script>
 </body>
 </html> 

@@ -10,9 +10,13 @@
   ![Node](https://img.shields.io/badge/node-%3E%3D14.0.0-brightgreen)
   ![Status](https://img.shields.io/badge/status-operational-success)
   
-  **A Knowledge Preservation System for When Everything Ends**
+  **Preserving Humanity's Knowledge Against Digital Extinction**
   
 </div>
+
+<p align="center">
+  <i>In a world of fragile infrastructure and ephemeral data, what knowledge would you save?</i>
+</p>
 
 ## 📋 Table of Contents
 
@@ -29,7 +33,9 @@
 
 ## 🔍 Overview
 
-WorldEndArchive is a self-contained web crawler and archiving system designed to preserve human knowledge in case of internet infrastructure collapse or civilization breakdown. It systematically crawls the web, compressing and storing important information into a local SQLite database, which can then be searched and accessed offline.
+WorldEndArchive is a digital Noah's Ark for human knowledge. As our increasingly complex digital infrastructure grows more vulnerable to disruption, this system ensures critical information survives catastrophic events by systematically crawling, compressing, and preserving important web content in a self-contained, offline-accessible archive.
+
+The internet contains humanity's accumulated wisdom, but its accessibility depends on complex systems vulnerable to numerous threats - from solar flares to cyberattacks, from infrastructure decay to social collapse. WorldEndArchive transforms the ephemeral web into permanent, accessible knowledge that can survive these threats.
 
 ## ✨ Features
 
@@ -55,7 +61,7 @@ WorldEndArchive is a self-contained web crawler and archiving system designed to
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/neooriginal/WorldEndArchive.git
+   git clone https://github.com/yourusername/worldendarchive.git
    cd worldendarchive
    ```
 
@@ -107,14 +113,14 @@ npm run vacuum
 
 ### Standalone Apocalypse Mode
 
-For offline use without any dependencies (ideal for USB storage):
+For offline use without any dependencies (ideal for disaster preparation):
 
 1. Download your database using the download button in the UI
 2. Copy the entire `/standalone` folder to your USB drive along with the database
 3. Open `standalone/standalone.html` in any modern browser
 4. Select your downloaded database file to load and search through the archived content
 
-This standalone mode works on any operating system with a web browser and requires no installation or internet connection.
+This standalone mode works on any operating system with a web browser and requires no installation or internet connection. **Consider creating multiple copies on different storage media for redundancy.**
 
 #### How Standalone Mode Works
 
@@ -155,7 +161,7 @@ Key configuration options in `.env`:
 
 ## 🧩 Content Filtering
 
-WorldEndArchive focuses on archiving valuable knowledge by:
+WorldEndArchive prioritizes knowledge critical for rebuilding civilization:
 
 1. Classifying content into defined knowledge categories:
    - Survival & Emergency Preparedness
@@ -177,16 +183,19 @@ WorldEndArchive focuses on archiving valuable knowledge by:
 
 ## 👥 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! This project represents a collective effort to preserve human knowledge. Please feel free to submit a Pull Request to improve our digital ark.
 
 ## 🚨 Emergency Usage
 
-In case of actual civilization collapse:
+In case of severe infrastructure disruption or societal instability:
 
-1. Ensure you have a working computer with NodeJS runtime
-2. Start the server: `npm start`
+1. Use battery, solar, or generator power to run a computer with this software
+2. Start the server: `npm start` (if Node.js is available)
 3. Access knowledge through the web interface at http://localhost:3000
-4. Generator power recommended for extended usage in post-grid scenarios
+4. If Node.js is unavailable, use the standalone version in the `/standalone` folder
+5. Share your knowledge database with trusted communities to strengthen collective resilience
+
+Remember: Information that seems mundane today may be irreplaceable tomorrow.
 
 ## 📄 License
 
@@ -199,3 +208,9 @@ This means:
 - ⚠️ You must give appropriate credit and indicate if changes were made
 
 See the [LICENSE](./LICENSE) file for details.
+
+---
+
+<p align="center">
+  <i>"The greatest glory of a building is not in its stones, nor in its gold. Its glory is in its endurance." - John Ruskin</i>
+</p>
