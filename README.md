@@ -55,7 +55,7 @@ WorldEndArchive is a self-contained web crawler and archiving system designed to
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/worldendarchive.git
+   git clone https://github.com/neooriginal/WorldEndArchive.git
    cd worldendarchive
    ```
 
