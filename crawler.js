@@ -11,7 +11,12 @@ const {
   getNextBatchFromQueue, 
   markUrlInProgress,
   markUrlFailed,
-  urlExists
+  urlExists,
+  saveNewPage, 
+  getExistingUrls, 
+  saveQueuedUrl, 
+  getNextQueuedUrls, 
+  markQueuedUrlProcessed 
 } = require('./database');
 const { compressData } = require('./compression');
 const { classifyContent } = require('./classifier');
@@ -50,7 +55,15 @@ const CONFIG = {
   maxPageSize: 50 * 1024 * 1024,
   
   // Data directory
-  dataDir: path.join(__dirname, 'data')
+  dataDir: path.join(__dirname, 'data'),
+
+  // New configuration parameters
+  maxPagesPerDomain: 50,
+  allowedContentTypes: [
+    'text/html',
+    'application/xhtml+xml',
+    'text/plain'
+  ]
 };
 
 // Store robots.txt data
@@ -355,40 +368,16 @@ async function crawlPage(url, parentUrl, depth) {
 }
 
 /**
- * Process a batch of URLs from the queue
- * @param {number} batchSize - Number of URLs to process
- */
-async function processBatch(batchSize) {
-  // Get next batch from queue
-  const batch = await getNextBatchFromQueue(batchSize);
-  
-  if (batch.length === 0) {
-    console.log('No URLs in queue to process');
-    return false;
-  }
-  
-  console.log(`Processing batch of ${batch.length} URLs`);
-  
-  // Mark URLs as in progress
-  markUrlInProgress(batch.map(item => item.url));
-  
-  // Process each URL
-  const promises = batch.map(item => 
-    crawlPage(item.url, item.parent_url, item.depth)
-  );
-  
-  // Wait for all to complete with timeout protection
-  await Promise.all(promises);
-  
-  return true;
-}
-
-/**
  * Start crawler with seed URLs
  * @param {Array<string>} seedUrls - Initial URLs to crawl
+ * @param {Object} callbacks - Optional callbacks for tracking progress
  */
-async function startCrawler(seedUrls) {
+async function startCrawler(seedUrls, callbacks = {}) {
   console.log('Starting crawler');
+  
+  // Set up callbacks
+  const onPageProcessed = callbacks.onPageProcessed || (() => {});
+  const onQueueUpdate = callbacks.onQueueUpdate || (() => {});
   
   // Initialize data directory
   initCrawler();
@@ -403,7 +392,15 @@ async function startCrawler(seedUrls) {
   let consecutive404Count = 0;
   
   while (running) {
-    const batchProcessed = await processBatch(CONFIG.concurrentRequests);
+    // Get queue size for reporting
+    try {
+      const queueSize = await getQueueSize();
+      onQueueUpdate(queueSize);
+    } catch (error) {
+      console.error('Error getting queue size:', error);
+    }
+    
+    const batchProcessed = await processBatch(CONFIG.concurrentRequests, onPageProcessed);
     
     if (!batchProcessed) {
       consecutive404Count++;
@@ -421,6 +418,70 @@ async function startCrawler(seedUrls) {
   }
   
   console.log('Crawler finished');
+}
+
+/**
+ * Process a batch of URLs from the queue
+ * @param {number} batchSize - Number of URLs to process
+ * @param {Function} onPageProcessed - Callback for processed pages
+ */
+async function processBatch(batchSize, onPageProcessed = () => {}) {
+  // Get next batch from queue
+  const batch = await getNextBatchFromQueue(batchSize);
+  
+  if (batch.length === 0) {
+    console.log('No URLs in queue to process');
+    return false;
+  }
+  
+  console.log(`Processing batch of ${batch.length} URLs`);
+  
+  // Mark URLs as in progress
+  markUrlInProgress(batch.map(item => item.url));
+  
+  // Process each URL
+  const promises = batch.map(item => 
+    processSinglePage(item.url, item.parent_url, item.depth, onPageProcessed)
+  );
+  
+  // Wait for all to complete with timeout protection
+  await Promise.all(promises);
+  
+  return true;
+}
+
+/**
+ * Process a single page with tracking
+ */
+async function processSinglePage(url, parentUrl, depth, onPageProcessed) {
+  let success = false;
+  
+  try {
+    await crawlPage(url, parentUrl, depth);
+    success = true;
+  } catch (error) {
+    console.error(`Error in processSinglePage for ${url}:`, error);
+  } finally {
+    // Call the callback regardless of success/failure
+    onPageProcessed(url, success);
+  }
+  
+  return success;
+}
+
+/**
+ * Get current queue size
+ */
+async function getQueueSize() {
+  try {
+    const db = require('better-sqlite3')(path.join(CONFIG.dataDir, 'worldend_archive.db'));
+    const result = db.prepare('SELECT COUNT(*) as count FROM crawl_queue WHERE status = "pending"').get();
+    db.close();
+    return result.count;
+  } catch (error) {
+    console.error('Error getting queue size:', error);
+    return 0;
+  }
 }
 
 /**
@@ -481,5 +542,6 @@ function getRecommendedSeeds() {
 module.exports = {
   startCrawler,
   getRecommendedSeeds,
+  getQueueSize,
   CONFIG
 }; 

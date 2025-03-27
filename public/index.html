@@ -29,8 +29,73 @@
     
     <!-- Main Content -->
     <main>
-      <!-- Search Panel -->
+      <!-- Crawler Status Panel -->
       <div class="terminal-panel">
+        <div class="panel-header">
+          <div class="panel-title">CRAWLER STATUS</div>
+          <div class="panel-controls">
+            <div class="panel-control control-close"></div>
+            <div class="panel-control control-minimize"></div>
+            <div class="panel-control control-maximize"></div>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div id="crawler-stats" class="crawler-stats">
+            <div class="crawler-status">
+              <span class="status-label">STATUS:</span>
+              <span id="crawler-status-indicator" class="status-indicator status-offline"></span>
+              <span id="crawler-status-text">OFFLINE</span>
+            </div>
+            <div class="stats-grid">
+              <div class="stat-card">
+                <div class="stat-title">DATABASE SIZE</div>
+                <div id="db-size" class="stat-value">0 B</div>
+                <div class="stat-subtitle">
+                  <span id="db-size-percent">0%</span> of 8GB limit
+                </div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-title">CRAWL SPEED</div>
+                <div id="crawl-speed" class="stat-value">0</div>
+                <div class="stat-subtitle">pages/minute</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-title">QUEUE</div>
+                <div id="queue-size" class="stat-value">0</div>
+                <div class="stat-subtitle">URLs pending</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-title">ARCHIVED</div>
+                <div id="processed-urls" class="stat-value">0</div>
+                <div class="stat-subtitle">pages</div>
+              </div>
+            </div>
+            <div class="crawler-details">
+              <div class="detail-item">
+                <span class="detail-label">RUNTIME:</span>
+                <span id="crawler-runtime">00:00:00</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">SUCCESS RATE:</span>
+                <span id="success-rate">100%</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">LAST URL:</span>
+                <span id="last-url" class="detail-url">N/A</span>
+              </div>
+            </div>
+            <div class="crawler-actions">
+              <a id="download-db" href="/api/download-db" class="action-button" download>
+                <span class="action-icon">⬇️</span>
+                DOWNLOAD DATABASE
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Search Panel -->
+      <div class="terminal-panel" style="margin-top: 20px;">
         <div class="panel-header">
           <div class="panel-title">INFORMATION RETRIEVAL SYSTEM</div>
           <div class="panel-controls">
@@ -119,6 +184,14 @@
             <div class="stat-card">
               <div class="stat-title">COMPRESSION RATIO</div>
               <div id="compression-ratio" class="stat-value">0:0</div>
+            </div>
+          </div>
+          
+          <!-- Topic Distribution -->
+          <div class="topics-distribution">
+            <h3 class="distribution-title">TOP TOPICS</h3>
+            <div id="topic-distribution" class="distribution-container">
+              <!-- Will be populated by JavaScript -->
             </div>
           </div>
         </div>

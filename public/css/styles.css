@@ -598,4 +598,328 @@ footer {
   background-image: url('../images/warning.svg');
   background-size: contain;
   background-repeat: no-repeat;
+}
+
+/* Crawler Status Panel */
+.crawler-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.crawler-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background-color: var(--bg-light);
+  border: 1px solid var(--border);
+}
+
+.status-label {
+  font-size: 0.9rem;
+  color: var(--text-dim);
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 15px;
+}
+
+.stat-subtitle {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  margin-top: 3px;
+}
+
+.crawler-details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background-color: var(--bg-light);
+  border: 1px solid var(--border);
+}
+
+.detail-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.detail-label {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+
+.detail-url {
+  font-size: 0.8rem;
+  max-width: 300px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.crawler-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.action-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: var(--primary-dim);
+  color: var(--text);
+  padding: 10px 15px;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-decoration: none;
+}
+
+.action-button:hover {
+  background-color: var(--primary);
+  color: var(--bg-dark);
+  text-shadow: none;
+}
+
+.action-icon {
+  font-size: 1.2rem;
+}
+
+/* Topic Distribution */
+.topics-distribution {
+  margin-top: 20px;
+}
+
+.distribution-title {
+  font-size: 0.9rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.distribution-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.topic-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.topic-bar-header {
+  display: flex;
+  justify-content: space-between;
+}
+
+.topic-name {
+  color: var(--primary);
+  font-size: 0.85rem;
+}
+
+.topic-count {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+
+.topic-bar-progress {
+  height: 5px;
+  background-color: var(--bg-light);
+  position: relative;
+  overflow: hidden;
+}
+
+.topic-bar-fill {
+  position: absolute;
+  height: 100%;
+  background-color: var(--primary-dim);
+  transition: width 0.5s ease;
+}
+
+/* Progress bar for database size */
+.db-progress {
+  height: 4px;
+  background-color: var(--bg-light);
+  margin-top: 5px;
+  position: relative;
+}
+
+.db-progress-fill {
+  height: 100%;
+  background-color: var(--primary);
+  width: 0%;
+  transition: width 0.5s ease;
+}
+
+/* New styles for the crawler stats panel and download button */
+.crawler-stats {
+  position: relative;
+}
+
+.crawler-status {
+  margin-bottom: 1rem;
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.status-value {
+  display: flex;
+  align-items: center;
+}
+
+.status-indicator {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-right: 0.5rem;
+  box-shadow: 0 0 5px currentColor;
+}
+
+.status-online {
+  background-color: var(--primary);
+  color: var(--primary);
+}
+
+.status-offline {
+  background-color: var(--danger);
+  color: var(--danger);
+}
+
+.status-standby {
+  background-color: var(--warning);
+  color: var(--warning);
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.stat-item {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0.5rem;
+  background-color: rgba(0, 0, 0, 0.2);
+}
+
+.stat-label {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  margin-bottom: 0.3rem;
+}
+
+.stat-value {
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: var(--primary);
+}
+
+.crawler-details {
+  margin-bottom: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0.5rem;
+  background-color: rgba(0, 0, 0, 0.2);
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.detail-row:last-child {
+  border-bottom: none;
+}
+
+.detail-label {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+.detail-value {
+  font-weight: bold;
+}
+
+.truncate {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.panel-actions {
+  margin-top: 1rem;
+  text-align: center;
+}
+
+.action-button {
+  display: inline-block;
+  background-color: var(--primary-dim);
+  color: var(--bg-dark);
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 3px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.9rem;
+  font-weight: bold;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 0 5px var(--primary-dim);
+}
+
+.action-button:hover {
+  background-color: var(--primary);
+  box-shadow: 0 0 10px var(--primary-dim);
+}
+
+.db-progress {
+  height: 5px;
+  background-color: var(--border);
+  margin-top: 0.3rem;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.db-progress-fill {
+  height: 100%;
+  background-color: var(--primary);
+  box-shadow: 0 0 5px var(--primary);
+}
+
+/* Topic Distribution */
+.topic-distribution {
+  margin-top: 1rem;
+}
+
+.topic-bar {
+  margin-bottom: 0.8rem;
+}
+
+.topic-bar-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.2rem;
+}
+
+.topic-name {
+  font-size: 0.9rem;
 } 

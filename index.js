@@ -5,10 +5,11 @@
 
 require('dotenv').config();
 const { initializeDatabase, getStats } = require('./database');
-const { startCrawler, getRecommendedSeeds, CONFIG } = require('./crawler');
+const { startCrawler, getRecommendedSeeds, CONFIG, getQueueSize } = require('./crawler');
 const api = require('./api');
 const path = require('path');
 const fs = require('fs');
+const express = require('express');
 
 // Configuration
 const DEFAULT_PORT = process.env.PORT || 3000;
@@ -17,6 +18,21 @@ const MAX_DB_SIZE_BYTES = 8 * 1024 * 1024 * 1024; // 8GB in bytes
 // Crawler state
 let crawlerRunning = false;
 let crawlerInterval = null;
+let crawlStartTime = null;
+let totalRuntime = 0;
+let pagesProcessed = 0;
+let pagesFailed = 0;
+let lastCrawlSpeed = 0;
+
+// Create express app
+const app = express();
+
+// Middleware
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+
+// API routes
+app.use('/api', require('./api'));
 
 /**
  * Initialize the application
@@ -44,6 +60,47 @@ async function init() {
 }
 
 /**
+ * Update crawler statistics
+ */
+function updateCrawlerStats(additionalStats = {}) {
+  // Calculate current stats
+  let runtime = 0;
+  if (crawlStartTime) {
+    runtime = Math.floor((Date.now() - crawlStartTime) / 1000);
+  }
+  
+  // Calculate crawl speed (pages per minute)
+  let crawlSpeed = 0;
+  if (runtime > 0) {
+    crawlSpeed = Math.round((pagesProcessed / (runtime / 60)) * 10) / 10;
+  }
+  
+  // Success rate
+  let successRate = 100;
+  if (pagesProcessed + pagesFailed > 0) {
+    successRate = Math.round((pagesProcessed / (pagesProcessed + pagesFailed)) * 100);
+  }
+  
+  // Save crawl speed for when crawler is not running
+  if (crawlSpeed > 0) {
+    lastCrawlSpeed = crawlSpeed;
+  }
+  
+  // Update API with current stats
+  api.updateCrawlerStats({
+    isRunning: crawlerRunning,
+    lastStartTime: crawlStartTime,
+    processedUrls: pagesProcessed,
+    failedUrls: pagesFailed,
+    crawlSpeed: crawlerRunning ? crawlSpeed : lastCrawlSpeed,
+    successRate: successRate,
+    startTime: crawlStartTime,
+    totalRuntime: totalRuntime + (crawlStartTime ? runtime : 0),
+    ...additionalStats
+  });
+}
+
+/**
  * Start crawler automatically and keep running until size limit
  */
 async function startAutomaticCrawler() {
@@ -57,13 +114,40 @@ async function startAutomaticCrawler() {
   // Get recommended seed URLs
   const seedUrls = getRecommendedSeeds();
   
-  // Start initial crawl
+  // Reset counter for new crawler run
+  crawlStartTime = Date.now();
   crawlerRunning = true;
-  startCrawler(seedUrls).catch(err => {
+  updateCrawlerStats({ lastProcessedUrl: null, queueSize: seedUrls.length });
+  
+  // Track crawler events with callbacks
+  const crawlerCallbacks = {
+    onPageProcessed: (url, success) => {
+      if (success) {
+        pagesProcessed++;
+      } else {
+        pagesFailed++;
+      }
+      updateCrawlerStats({ lastProcessedUrl: url });
+    },
+    onQueueUpdate: (queueSize) => {
+      updateCrawlerStats({ queueSize });
+    }
+  };
+  
+  // Start initial crawl
+  startCrawler(seedUrls, crawlerCallbacks).catch(err => {
     console.error('Crawler error:', err);
     crawlerRunning = false;
+    const runtime = Math.floor((Date.now() - crawlStartTime) / 1000);
+    totalRuntime += runtime;
+    crawlStartTime = null;
+    updateCrawlerStats();
   }).finally(() => {
     crawlerRunning = false;
+    const runtime = Math.floor((Date.now() - crawlStartTime) / 1000);
+    totalRuntime += runtime;
+    crawlStartTime = null;
+    updateCrawlerStats();
     console.log('Initial crawl completed');
   });
   
@@ -95,10 +179,15 @@ async function startAutomaticCrawler() {
       console.log(`Total compressed content: ${formatBytes(totalCompressedBytes)}`);
       console.log(`Total raw content: ${formatBytes(totalRawBytes)}`);
       
+      // Update queue size from database
+      const queueSize = dbStats.queue?.pending || 0;
+      updateCrawlerStats({ queueSize });
+      
       // Check if we've reached the size limit
       if (fileSizeInBytes >= MAX_DB_SIZE_BYTES) {
         console.log(`Database has reached the size limit of ${formatBytes(MAX_DB_SIZE_BYTES)}`);
         console.log('Automatic crawling stopped');
+        updateCrawlerStats({ isRunning: false });
         clearInterval(crawlerInterval);
         return;
       }
@@ -106,11 +195,22 @@ async function startAutomaticCrawler() {
       // Restart crawler with new seed URLs
       console.log('Restarting crawler...');
       crawlerRunning = true;
+      crawlStartTime = Date.now();
+      updateCrawlerStats({ lastProcessedUrl: null });
       
-      startCrawler(seedUrls).catch(err => {
+      startCrawler(seedUrls, crawlerCallbacks).catch(err => {
         console.error('Crawler error:', err);
+        crawlerRunning = false;
+        const runtime = Math.floor((Date.now() - crawlStartTime) / 1000);
+        totalRuntime += runtime;
+        crawlStartTime = null;
+        updateCrawlerStats();
       }).finally(() => {
         crawlerRunning = false;
+        const runtime = Math.floor((Date.now() - crawlStartTime) / 1000);
+        totalRuntime += runtime;
+        crawlStartTime = null;
+        updateCrawlerStats();
         console.log('Crawler cycle completed');
       });
     } catch (error) {
@@ -173,9 +273,42 @@ async function handleCommandLine() {
       console.log(`  ... and ${seedUrls.length - 5} more`);
     }
     
-    startCrawler(seedUrls).catch(err => {
+    // Reset counters for manual crawl
+    pagesProcessed = 0;
+    pagesFailed = 0;
+    crawlStartTime = Date.now();
+    crawlerRunning = true;
+    updateCrawlerStats({ lastProcessedUrl: null, queueSize: seedUrls.length });
+    
+    // Track crawler events with callbacks
+    const crawlerCallbacks = {
+      onPageProcessed: (url, success) => {
+        if (success) {
+          pagesProcessed++;
+        } else {
+          pagesFailed++;
+        }
+        updateCrawlerStats({ lastProcessedUrl: url });
+      },
+      onQueueUpdate: (queueSize) => {
+        updateCrawlerStats({ queueSize });
+      }
+    };
+    
+    startCrawler(seedUrls, crawlerCallbacks).catch(err => {
       console.error('Crawler error:', err);
+      crawlerRunning = false;
+      const runtime = Math.floor((Date.now() - crawlStartTime) / 1000);
+      totalRuntime += runtime;
+      crawlStartTime = null;
+      updateCrawlerStats();
       process.exit(1);
+    }).finally(() => {
+      crawlerRunning = false;
+      const runtime = Math.floor((Date.now() - crawlStartTime) / 1000);
+      totalRuntime += runtime;
+      crawlStartTime = null;
+      updateCrawlerStats();
     });
   }
 }
@@ -193,6 +326,10 @@ process.on('SIGINT', () => {
   console.log('Shutting down WorldEndArchive...');
   if (crawlerInterval) {
     clearInterval(crawlerInterval);
+  }
+  if (crawlStartTime) {
+    const runtime = Math.floor((Date.now() - crawlStartTime) / 1000);
+    totalRuntime += runtime;
   }
   process.exit(0);
 }); 

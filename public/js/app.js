@@ -12,11 +12,33 @@ const appState = {
   currentView: 'search', // 'search', 'results', 'content'
   searchResults: [],
   currentPage: null,
-  stats: {}
+  stats: {},
+  crawlerStats: {
+    isRunning: false,
+    queueSize: 0,
+    processedUrls: 0,
+    crawlSpeed: 0,
+    runtime: 0,
+    successRate: 100,
+    lastProcessedUrl: null
+  },
+  dbStats: {
+    fileSize: '0 B',
+    fileSizeBytes: 0,
+    totalPages: 0,
+    totalSizeRaw: '0 B',
+    totalSizeCompressed: '0 B',
+    compressionRatio: '0:0',
+    topTopics: []
+  }
 };
 
 // DOM Elements
 let elements = {};
+
+// Polling interval for stats
+let statsInterval = null;
+const MAX_DB_SIZE_BYTES = 8 * 1024 * 1024 * 1024; // 8GB
 
 /**
  * Initialize the application
@@ -34,12 +56,16 @@ async function initApp() {
   // Load application data
   await Promise.all([
     loadTopics(),
-    loadStats()
+    loadStats(),
+    loadCrawlerStats()
   ]);
   
   // Initialize UI
   updateTopicsUI();
   updateStatsUI();
+  
+  // Start polling for crawler stats
+  startStatsPoll();
   
   console.log('WorldEndArchive initialized');
 }
@@ -74,7 +100,21 @@ function cacheElements() {
     totalSizeCompressed: document.getElementById('total-size-compressed'),
     compressionRatio: document.getElementById('compression-ratio'),
     lastCrawl: document.getElementById('last-crawl'),
-    systemStatus: document.getElementById('system-status')
+    systemStatus: document.getElementById('system-status'),
+    topicDistribution: document.getElementById('topic-distribution'),
+    
+    // Crawler Stats
+    crawlerStatusIndicator: document.getElementById('crawler-status-indicator'),
+    crawlerStatusText: document.getElementById('crawler-status-text'),
+    dbSize: document.getElementById('db-size'),
+    dbSizePercent: document.getElementById('db-size-percent'),
+    crawlSpeed: document.getElementById('crawl-speed'),
+    queueSize: document.getElementById('queue-size'),
+    processedUrls: document.getElementById('processed-urls'),
+    crawlerRuntime: document.getElementById('crawler-runtime'),
+    successRate: document.getElementById('success-rate'),
+    lastUrl: document.getElementById('last-url'),
+    downloadDbButton: document.getElementById('download-db')
   };
 }
 
@@ -91,6 +131,19 @@ function setupEventListeners() {
   // Content viewer close
   elements.contentClose.addEventListener('click', closeContentViewer);
   
+  // Download button confirmation
+  if (elements.downloadDbButton) {
+    elements.downloadDbButton.addEventListener('click', function(e) {
+      const dbSizeStr = elements.dbSize.textContent;
+      // If database is larger than 100MB, show confirmation
+      if (appState.dbStats.fileSizeBytes > 100 * 1024 * 1024) {
+        if (!confirm(`Database size is ${dbSizeStr}. Download may take some time. Continue?`)) {
+          e.preventDefault();
+        }
+      }
+    });
+  }
+  
   // Keyboard shortcuts
   document.addEventListener('keydown', (e) => {
     // ESC key to close content viewer
@@ -98,6 +151,196 @@ function setupEventListeners() {
       closeContentViewer();
     }
   });
+}
+
+/**
+ * Start polling for crawler stats
+ */
+function startStatsPoll() {
+  // Clear existing interval if any
+  if (statsInterval) {
+    clearInterval(statsInterval);
+  }
+  
+  // Initial load
+  loadCrawlerStats();
+  
+  // Set up interval for polling
+  statsInterval = setInterval(loadCrawlerStats, 3000); // Update every 3 seconds
+}
+
+/**
+ * Load crawler stats from API
+ */
+async function loadCrawlerStats() {
+  try {
+    const response = await fetch('/api/crawler-stats');
+    const stats = await response.json();
+    
+    // Update application state
+    appState.crawlerStats = stats.crawler;
+    appState.dbStats = stats.database;
+    
+    // Update UI
+    updateCrawlerStatsUI();
+    
+    return stats;
+  } catch (error) {
+    console.error('Failed to load crawler stats:', error);
+    return {};
+  }
+}
+
+/**
+ * Update crawler stats UI
+ */
+function updateCrawlerStatsUI() {
+  const { crawlerStats, dbStats } = appState;
+  
+  // Crawler status indicator
+  if (elements.crawlerStatusIndicator && elements.crawlerStatusText) {
+    if (crawlerStats.isRunning) {
+      elements.crawlerStatusIndicator.className = 'status-indicator status-online';
+      elements.crawlerStatusText.textContent = 'ACTIVE';
+    } else {
+      elements.crawlerStatusIndicator.className = 'status-indicator status-offline';
+      elements.crawlerStatusText.textContent = 'IDLE';
+    }
+  }
+  
+  // Database size
+  if (elements.dbSize) {
+    elements.dbSize.textContent = dbStats.fileSize || '0 B';
+  }
+  
+  // Database size percentage
+  if (elements.dbSizePercent) {
+    const percentFilled = Math.min(100, Math.round((dbStats.fileSizeBytes / MAX_DB_SIZE_BYTES) * 100));
+    elements.dbSizePercent.textContent = `${percentFilled}%`;
+    
+    // Add progress bar if not exists
+    if (!document.querySelector('.db-progress')) {
+      const progressBar = document.createElement('div');
+      progressBar.className = 'db-progress';
+      
+      const progressFill = document.createElement('div');
+      progressFill.className = 'db-progress-fill';
+      progressFill.style.width = `${percentFilled}%`;
+      
+      progressBar.appendChild(progressFill);
+      elements.dbSize.parentNode.appendChild(progressBar);
+    } else {
+      // Update existing progress bar
+      const progressFill = document.querySelector('.db-progress-fill');
+      if (progressFill) {
+        progressFill.style.width = `${percentFilled}%`;
+      }
+    }
+  }
+  
+  // Crawl speed
+  if (elements.crawlSpeed) {
+    elements.crawlSpeed.textContent = crawlerStats.crawlSpeed || '0';
+  }
+  
+  // Queue size
+  if (elements.queueSize) {
+    elements.queueSize.textContent = crawlerStats.queueSize || '0';
+  }
+  
+  // Processed URLs
+  if (elements.processedUrls) {
+    elements.processedUrls.textContent = crawlerStats.processedUrls || '0';
+  }
+  
+  // Runtime
+  if (elements.crawlerRuntime) {
+    elements.crawlerRuntime.textContent = formatTime(crawlerStats.runtime || 0);
+  }
+  
+  // Success rate
+  if (elements.successRate) {
+    elements.successRate.textContent = `${crawlerStats.successRate || 100}%`;
+  }
+  
+  // Last URL
+  if (elements.lastUrl) {
+    elements.lastUrl.textContent = crawlerStats.lastProcessedUrl || 'N/A';
+    elements.lastUrl.title = crawlerStats.lastProcessedUrl || '';
+  }
+  
+  // Update topic distribution
+  updateTopicDistribution();
+}
+
+/**
+ * Update topic distribution chart
+ */
+function updateTopicDistribution() {
+  if (!elements.topicDistribution) return;
+  
+  const topTopics = appState.dbStats.topTopics || [];
+  if (topTopics.length === 0) {
+    elements.topicDistribution.innerHTML = '<div class="no-data">No topic data available</div>';
+    return;
+  }
+  
+  // Get max count for scaling
+  const maxCount = Math.max(...topTopics.map(t => t.count));
+  
+  // Clear existing content
+  elements.topicDistribution.innerHTML = '';
+  
+  // Create bars for each topic
+  topTopics.forEach(topic => {
+    const percent = Math.round((topic.count / maxCount) * 100);
+    
+    const topicBar = document.createElement('div');
+    topicBar.className = 'topic-bar';
+    
+    const barHeader = document.createElement('div');
+    barHeader.className = 'topic-bar-header';
+    
+    const topicName = document.createElement('div');
+    topicName.className = 'topic-name';
+    topicName.textContent = topic.topic.toUpperCase();
+    
+    const topicCount = document.createElement('div');
+    topicCount.className = 'topic-count';
+    topicCount.textContent = topic.count;
+    
+    barHeader.appendChild(topicName);
+    barHeader.appendChild(topicCount);
+    
+    const barProgress = document.createElement('div');
+    barProgress.className = 'topic-bar-progress';
+    
+    const barFill = document.createElement('div');
+    barFill.className = 'topic-bar-fill';
+    barFill.style.width = `${percent}%`;
+    
+    barProgress.appendChild(barFill);
+    
+    topicBar.appendChild(barHeader);
+    topicBar.appendChild(barProgress);
+    
+    elements.topicDistribution.appendChild(topicBar);
+  });
+}
+
+/**
+ * Format seconds to HH:MM:SS
+ */
+function formatTime(seconds) {
+  const hrs = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+  
+  return [
+    hrs.toString().padStart(2, '0'),
+    mins.toString().padStart(2, '0'),
+    secs.toString().padStart(2, '0')
+  ].join(':');
 }
 
 /**
