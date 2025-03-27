@@ -323,7 +323,12 @@ async function crawlPage(url, parentUrl, depth) {
     }
     
     // Classify content
-    const topics = classifyContent(title, bodyText, CONFIG.minTopicMatchScore);
+    const topics = classifyContent(
+      title, 
+      bodyText,
+      CONFIG.minTopicMatchScore,
+      CONFIG.topicWeights
+    );
     
     // Check if any topics matched with good confidence
     const topicCount = Object.keys(topics).length;

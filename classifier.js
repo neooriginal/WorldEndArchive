@@ -3,7 +3,8 @@
  * Enhanced with extensive keyword sets for various knowledge domains
  */
 
-const { topicWeights } = require('./crawler').CONFIG;
+// Removed direct import of topicWeights to break circular dependency
+// const { topicWeights } = require('./crawler').CONFIG;
 
 // Extensive topic keywords organized by category
 const topicKeywords = {
@@ -161,9 +162,10 @@ const topicKeywords = {
  * @param {string} title - Title of the page
  * @param {string} bodyText - Text content of the page
  * @param {number} minScore - Minimum score to consider a match
+ * @param {Object} topicWeights - Optional weights for topics (passed from crawler)
  * @returns {Object} - Object with topic keys and confidence values
  */
-function classifyContent(title, bodyText, minScore = 1) {
+function classifyContent(title, bodyText, minScore = 1, topicWeights = {}) {
   const normalizedText = (title + ' ' + bodyText).toLowerCase();
   const results = {};
   
@@ -181,7 +183,7 @@ function classifyContent(title, bodyText, minScore = 1) {
     }
     
     // Apply topic weight modifier if available
-    const topicWeight = topicWeights?.[topic] || 1.0;
+    const topicWeight = topicWeights[topic] || 1.0;
     score = score * topicWeight;
     
     // Add to results if score exceeds threshold
