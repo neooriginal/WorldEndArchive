@@ -32,20 +32,15 @@ let crawlerStats = {
   totalRuntime: 0
 };
 
-// Create Express app
-const app = express();
-
-// Middleware
-app.use(cors());
-app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+// Create Express router
+const router = express.Router();
 
 /**
  * API Routes
  */
 
 // Search endpoint
-app.get('/api/search', async (req, res) => {
+router.get('/search', async (req, res) => {
   try {
     const { query, topics } = req.query;
     const topicList = topics ? topics.split(',') : [];
@@ -70,7 +65,7 @@ app.get('/api/search', async (req, res) => {
 });
 
 // Get content endpoint
-app.get('/api/content/:id', async (req, res) => {
+router.get('/content/:id', async (req, res) => {
   try {
     const page = await getPageContent(req.params.id);
     if (!page) {
@@ -107,7 +102,7 @@ app.get('/api/content/:id', async (req, res) => {
 });
 
 // Get stats
-app.get('/api/stats', async (req, res) => {
+router.get('/stats', async (req, res) => {
   try {
     const dbStats = await getStats();
     
@@ -133,7 +128,7 @@ app.get('/api/stats', async (req, res) => {
 });
 
 // Get topics
-app.get('/api/topics', (req, res) => {
+router.get('/topics', (req, res) => {
   try {
     const topics = getAvailableTopics();
     
@@ -162,7 +157,7 @@ app.get('/api/topics', (req, res) => {
 });
 
 // Maintenance endpoint
-app.post('/api/maintenance', async (req, res) => {
+router.post('/maintenance', async (req, res) => {
   if (req.body.action === 'vacuum') {
     try {
       await vacuumDatabase();
@@ -177,7 +172,7 @@ app.post('/api/maintenance', async (req, res) => {
 });
 
 // Download database endpoint
-app.get('/api/download-db', (req, res) => {
+router.get('/download-db', (req, res) => {
   try {
     const dbPath = path.join(__dirname, 'data', 'worldend_archive.db');
     
@@ -212,7 +207,7 @@ app.get('/api/download-db', (req, res) => {
 });
 
 // Get crawler status and stats
-app.get('/api/crawler-stats', async (req, res) => {
+router.get('/crawler-stats', async (req, res) => {
   try {
     // Get database stats
     const dbStats = await getStats();
@@ -264,7 +259,7 @@ app.get('/api/crawler-stats', async (req, res) => {
 
 // Update crawler stats (called by the crawler)
 // This endpoint is for internal use
-app.post('/api/update-crawler-stats', (req, res) => {
+router.post('/update-crawler-stats', (req, res) => {
   try {
     const stats = req.body;
     
@@ -285,22 +280,31 @@ app.post('/api/update-crawler-stats', (req, res) => {
   }
 });
 
+// Create Express app for standalone API server
+const app = express();
+app.use(cors());
+app.use(express.json());
+app.use('/api', router);
+app.use(express.static(path.join(__dirname, 'public')));
+
 // Catch-all route for SPA
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Export server and stats
-module.exports = {
-  start: (port = 3000) => {
-    app.listen(port, () => {
-      console.log(`WorldEndArchive server running on port ${port}`);
-    });
-  },
-  updateCrawlerStats: (stats) => {
-    crawlerStats = {
-      ...crawlerStats,
-      ...stats
-    };
-  }
+// Export router for use in index.js
+module.exports = router;
+
+// Export API functions separately
+module.exports.start = (port = 3000) => {
+  app.listen(port, () => {
+    console.log(`WorldEndArchive server running on port ${port}`);
+  });
+};
+
+module.exports.updateCrawlerStats = (stats) => {
+  crawlerStats = {
+    ...crawlerStats,
+    ...stats
+  };
 }; 

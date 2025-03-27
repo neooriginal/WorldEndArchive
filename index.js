@@ -32,7 +32,7 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // API routes
-app.use('/api', require('./api'));
+app.use('/api', api);
 
 /**
  * Initialize the application

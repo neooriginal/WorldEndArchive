@@ -475,7 +475,7 @@ async function processSinglePage(url, parentUrl, depth, onPageProcessed) {
 async function getQueueSize() {
   try {
     const db = require('better-sqlite3')(path.join(CONFIG.dataDir, 'worldend_archive.db'));
-    const result = db.prepare('SELECT COUNT(*) as count FROM crawl_queue WHERE status = "pending"').get();
+    const result = db.prepare('SELECT COUNT(*) as count FROM crawl_queue WHERE status = \'pending\'').get();
     db.close();
     return result.count;
   } catch (error) {
