@@ -439,7 +439,12 @@ footer {
 
 .status-offline {
   background-color: var(--danger);
-  box-shadow: 0 0 5px var(--danger);
+  color: var(--danger);
+}
+
+.status-idle {
+  background-color: var(--warning);
+  color: var(--warning);
 }
 
 .status-warning {

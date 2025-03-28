@@ -178,8 +178,24 @@ async function loadCrawlerStats() {
     const stats = await response.json();
     
     // Update application state
-    appState.crawlerStats = stats.crawler;
-    appState.dbStats = stats.database;
+    appState.crawlerStats = stats.crawler || {
+      isRunning: false,
+      queueSize: 0,
+      processedUrls: 0,
+      crawlSpeed: 0,
+      runtime: 0,
+      successRate: 100,
+      lastProcessedUrl: null
+    };
+    appState.dbStats = stats.database || {
+      fileSize: '0 B',
+      fileSizeBytes: 0,
+      totalPages: 0,
+      totalSizeRaw: '0 B',
+      totalSizeCompressed: '0 B',
+      compressionRatio: '0:0',
+      topTopics: []
+    };
     
     // Update UI
     updateCrawlerStatsUI();
@@ -199,23 +215,24 @@ function updateCrawlerStatsUI() {
   
   // Crawler status indicator
   if (elements.crawlerStatusIndicator && elements.crawlerStatusText) {
-    if (crawlerStats.isRunning) {
+    if (crawlerStats && crawlerStats.isRunning) {
       elements.crawlerStatusIndicator.className = 'status-indicator status-online';
       elements.crawlerStatusText.textContent = 'ACTIVE';
     } else {
-      elements.crawlerStatusIndicator.className = 'status-indicator status-offline';
+      elements.crawlerStatusIndicator.className = 'status-indicator status-idle';
       elements.crawlerStatusText.textContent = 'IDLE';
     }
   }
   
   // Database size
-  if (elements.dbSize) {
+  if (elements.dbSize && dbStats) {
     elements.dbSize.textContent = dbStats.fileSize || '0 B';
   }
   
   // Database size percentage
-  if (elements.dbSizePercent) {
-    const percentFilled = Math.min(100, Math.round((dbStats.fileSizeBytes / MAX_DB_SIZE_BYTES) * 100));
+  if (elements.dbSizePercent && dbStats) {
+    const fileSizeBytes = dbStats.fileSizeBytes || 0;
+    const percentFilled = Math.min(100, Math.round((fileSizeBytes / MAX_DB_SIZE_BYTES) * 100));
     elements.dbSizePercent.textContent = `${percentFilled}%`;
     
     // Add progress bar if not exists
@@ -239,32 +256,32 @@ function updateCrawlerStatsUI() {
   }
   
   // Crawl speed
-  if (elements.crawlSpeed) {
+  if (elements.crawlSpeed && crawlerStats) {
     elements.crawlSpeed.textContent = crawlerStats.crawlSpeed || '0';
   }
   
   // Queue size
-  if (elements.queueSize) {
+  if (elements.queueSize && crawlerStats) {
     elements.queueSize.textContent = crawlerStats.queueSize || '0';
   }
   
   // Processed URLs
-  if (elements.processedUrls) {
+  if (elements.processedUrls && crawlerStats) {
     elements.processedUrls.textContent = crawlerStats.processedUrls || '0';
   }
   
   // Runtime
-  if (elements.crawlerRuntime) {
+  if (elements.crawlerRuntime && crawlerStats) {
     elements.crawlerRuntime.textContent = formatTime(crawlerStats.runtime || 0);
   }
   
   // Success rate
-  if (elements.successRate) {
+  if (elements.successRate && crawlerStats) {
     elements.successRate.textContent = `${crawlerStats.successRate || 100}%`;
   }
   
   // Last URL
-  if (elements.lastUrl) {
+  if (elements.lastUrl && crawlerStats) {
     elements.lastUrl.textContent = crawlerStats.lastProcessedUrl || 'N/A';
     elements.lastUrl.title = crawlerStats.lastProcessedUrl || '';
   }

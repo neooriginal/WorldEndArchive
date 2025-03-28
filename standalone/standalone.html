@@ -948,6 +948,7 @@
       contentPanel.style.display = 'none';
     }
     
+    // View content
     function viewContent(id, fromNavigation = false) {
       console.log(`Attempting to view content for ID: ${id}`);
       
@@ -978,6 +979,11 @@
             <p>Loading content...</p>
           </div>
         `;
+        
+        // Check if database is loaded
+        if (!db) {
+          throw new Error("Database not loaded");
+        }
         
         // Get page content with proper error handling
         let contentResult;
@@ -2061,9 +2067,6 @@
         document.getElementById('nav-back').addEventListener('click', navigateBack);
         document.getElementById('nav-forward').addEventListener('click', navigateForward);
       }
-      
-      // Update controls state
-      updateNavigationControls();
     }
     
     // Update the state of navigation controls
@@ -2084,8 +2087,9 @@
     function navigateBack() {
       if (currentHistoryPosition > 0) {
         currentHistoryPosition--;
-        const pageId = navigationHistory[currentHistoryPosition];
-        viewContent(pageId, true);
+        const prevContentId = navigationHistory[currentHistoryPosition];
+        viewContent(prevContentId, true);
+        updateNavigationControls();
       }
     }
     
@@ -2093,8 +2097,9 @@
     function navigateForward() {
       if (currentHistoryPosition < navigationHistory.length - 1) {
         currentHistoryPosition++;
-        const pageId = navigationHistory[currentHistoryPosition];
-        viewContent(pageId, true);
+        const nextContentId = navigationHistory[currentHistoryPosition];
+        viewContent(nextContentId, true);
+        updateNavigationControls();
       }
     }
   </script>

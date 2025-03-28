@@ -223,13 +223,31 @@ router.get('/crawler-stats', async (req, res) => {
       fileSizeInBytes = stats.size;
     }
     
+    // Make sure crawlerStats has default values if undefined
+    const defaultCrawlerStats = {
+      isRunning: false,
+      startTime: null,
+      totalRuntime: 0,
+      queueSize: 0,
+      processedUrls: 0,
+      crawlSpeed: 0,
+      successRate: 100,
+      lastProcessedUrl: null
+    };
+    
+    // Combine with actual crawlerStats, using defaults for missing values
+    const currentCrawlerStats = {
+      ...defaultCrawlerStats,
+      ...(crawlerStats || {})
+    };
+    
     // Format stats to include both database info and crawler status
     const stats = {
       crawler: {
-        ...crawlerStats,
-        runtime: crawlerStats.startTime ? 
-          Math.floor((Date.now() - crawlerStats.startTime) / 1000) + crawlerStats.totalRuntime : 
-          crawlerStats.totalRuntime
+        ...currentCrawlerStats,
+        runtime: currentCrawlerStats.startTime ? 
+          Math.floor((Date.now() - currentCrawlerStats.startTime) / 1000) + currentCrawlerStats.totalRuntime : 
+          currentCrawlerStats.totalRuntime
       },
       database: {
         exists: dbFileExists,
@@ -253,7 +271,26 @@ router.get('/crawler-stats', async (req, res) => {
     res.json(stats);
   } catch (error) {
     console.error('Crawler stats error:', error);
-    res.status(500).json({ error: error.message });
+    // Return a valid response structure even on error
+    res.json({
+      crawler: {
+        isRunning: false,
+        runtime: 0,
+        queueSize: 0,
+        processedUrls: 0,
+        crawlSpeed: 0,
+        successRate: 100,
+        lastProcessedUrl: null
+      },
+      database: {
+        exists: false,
+        fileSize: '0 B',
+        fileSizeBytes: 0,
+        totalPages: 0,
+        lastCrawlDate: null,
+        topTopics: []
+      }
+    });
   }
 });
 
