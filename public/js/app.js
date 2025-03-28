@@ -114,7 +114,6 @@ function cacheElements() {
     totalSizeRaw: document.getElementById('total-size-raw'),
     totalSizeCompressed: document.getElementById('total-size-compressed'),
     compressionRatio: document.getElementById('compression-ratio'),
-    lastCrawl: document.getElementById('last-crawl'),
     systemStatus: document.getElementById('system-status'),
     topicDistribution: document.getElementById('topic-distribution'),
     
@@ -128,7 +127,6 @@ function cacheElements() {
     processedUrls: document.getElementById('processed-urls'),
     crawlerRuntime: document.getElementById('crawler-runtime'),
     successRate: document.getElementById('success-rate'),
-    lastUrl: document.getElementById('last-url'),
     downloadDbButton: document.getElementById('download-db'),
     
     // Crawler mode panel
