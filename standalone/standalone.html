@@ -461,6 +461,8 @@
     let dbInfo = {};
     let currentSearchResults = [];
     let availableTopics = [];
+    let navigationHistory = [];
+    let currentHistoryPosition = -1;
     
     // DOM elements
     const dbSelector = document.getElementById('dbSelector');
@@ -946,10 +948,25 @@
       contentPanel.style.display = 'none';
     }
     
-    function viewContent(id) {
+    function viewContent(id, fromNavigation = false) {
       console.log(`Attempting to view content for ID: ${id}`);
       
       try {
+        // Save to navigation history if not already navigating from history
+        if (!fromNavigation) {
+          // If we're in the middle of a history chain, truncate future history
+          if (currentHistoryPosition >= 0 && currentHistoryPosition < navigationHistory.length - 1) {
+            navigationHistory = navigationHistory.slice(0, currentHistoryPosition + 1);
+          }
+          
+          // Add to history
+          navigationHistory.push(id);
+          currentHistoryPosition = navigationHistory.length - 1;
+          
+          // Update navigation controls
+          updateNavigationControls();
+        }
+        
         // Show content panel and loading indicator immediately
         contentPanel.style.display = 'block';
         resultsPanel.style.display = 'none';
@@ -1098,8 +1115,38 @@
       contentContainer.style.border = '1px solid #ddd';
       contentContainer.style.borderRadius = '4px';
       contentContainer.style.marginTop = '20px';
-      contentContainer.style.fontFamily = 'monospace, Courier, monospace';
+      contentContainer.style.fontFamily = 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
       contentContainer.style.lineHeight = '1.6';
+      
+      // Add emergency mode controls
+      const controlBar = document.createElement('div');
+      controlBar.className = 'content-controls';
+      controlBar.innerHTML = `
+        <button class="mode-toggle" onclick="document.getElementById('contentViewInner').classList.toggle('emergency-mode'); this.classList.toggle('active');">
+          <span class="icon">🔦</span> Emergency Mode
+        </button>
+        <button class="print-button" onclick="window.print();">
+          <span class="icon">🖨️</span> Print
+        </button>
+        <button class="font-size-button" onclick="changeFontSize(1);">
+          <span class="icon">A+</span>
+        </button>
+        <button class="font-size-button" onclick="changeFontSize(-1);">
+          <span class="icon">A-</span>
+        </button>
+      `;
+      
+      // Add script for font size adjustments
+      const sizeScript = document.createElement('script');
+      sizeScript.textContent = `
+        function changeFontSize(direction) {
+          const contentEl = document.getElementById('contentViewInner');
+          const currentSize = parseInt(window.getComputedStyle(contentEl).fontSize);
+          const newSize = currentSize + (direction * 2);
+          contentEl.style.fontSize = newSize + 'px';
+        }
+      `;
+      document.head.appendChild(sizeScript);
       
       // Check if the content looks like HTML
       const isHtml = /<\s*html|<\s*body|<\s*div|<\s*p|<\s*h[1-6]|<\s*span|<\s*a\s+href/i.test(text);
@@ -1110,15 +1157,58 @@
         
         const frame = document.createElement('iframe');
         frame.style.width = '100%';
-        frame.style.height = '500px';
+        frame.style.height = '600px';
         frame.style.border = '1px solid #ddd';
         frame.style.borderRadius = '3px';
         frame.style.backgroundColor = '#fff';
-        frame.sandbox = 'allow-same-origin'; // Restrict iframe capabilities
+        frame.sandbox = 'allow-same-origin allow-scripts'; // Allow scripts for link handling
         
+        contentContainer.appendChild(controlBar);
         contentContainer.appendChild(frame);
         contentView.innerHTML = '';
         contentView.appendChild(contentContainer);
+        
+        // Add content CSS for iframe
+        const contentStyle = document.createElement('style');
+        contentStyle.textContent = `
+          @media print {
+            .content-controls { display: none !important; }
+            body { font-size: 12pt; }
+          }
+          
+          .content-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 15px;
+          }
+          
+          .content-controls button {
+            padding: 6px 12px;
+            background: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+          }
+          
+          .content-controls button:hover {
+            background: #e9e9e9;
+          }
+          
+          .content-controls button.active {
+            background: #4caf50;
+            color: white;
+          }
+          
+          .content-controls .icon {
+            font-size: 16px;
+          }
+        `;
+        document.head.appendChild(contentStyle);
         
         // Once the iframe is in the DOM, set its content
         setTimeout(() => {
@@ -1132,10 +1222,34 @@
             doc.write(sanitizedContent);
             doc.close();
             
+            // Add ID to the body for emergency mode toggle
+            const body = doc.querySelector('body');
+            if (body) {
+              body.id = 'contentViewInner';
+            }
+            
+            // Add script to handle links inside the iframe
+            const script = doc.createElement('script');
+            script.textContent = `
+              // Make links work with parent frame's database
+              document.addEventListener('click', function(e) {
+                const link = e.target.closest('a');
+                if (link && link.hasAttribute('data-original-url')) {
+                  e.preventDefault();
+                  // Call parent frame's handler
+                  window.parent.checkLinkInDatabase(link);
+                }
+              });
+            `;
+            doc.body.appendChild(script);
+            
             // Adjust iframe height to content
             frame.onload = function() {
               try {
-                const height = frame.contentDocument.body.scrollHeight;
+                const height = Math.max(
+                  frame.contentDocument.body.scrollHeight, 
+                  frame.contentDocument.documentElement.scrollHeight
+                );
                 frame.style.height = (height + 50) + 'px';
               } catch(e) {
                 console.log("Couldn't adjust iframe height:", e);
@@ -1154,8 +1268,25 @@
       }
       
       function displayAsText(content) {
+        // Add emergency styling
+        const textStyle = document.createElement('style');
+        textStyle.textContent = `
+          #contentViewInner.emergency-mode {
+            background-color: #121212 !important;
+            color: #e0e0e0 !important;
+          }
+          
+          #contentViewInner.emergency-mode pre {
+            background-color: #1e1e1e !important;
+            color: #e0e0e0 !important;
+            border-color: #333 !important;
+          }
+        `;
+        document.head.appendChild(textStyle);
+        
         // Display as preformatted text
         const pre = document.createElement('pre');
+        pre.id = 'contentViewInner';
         pre.style.whiteSpace = 'pre-wrap';
         pre.style.wordBreak = 'break-word';
         pre.style.padding = '20px';
@@ -1179,6 +1310,7 @@
         }
         
         pre.textContent = content;
+        contentContainer.appendChild(controlBar);
         contentContainer.appendChild(pre);
         
         contentView.innerHTML = '';
@@ -1223,30 +1355,40 @@
       iframes.forEach(iframe => {
         // Replace with a placeholder
         const placeholder = doc.createElement('div');
-        placeholder.style.padding = '10px';
-        placeholder.style.border = '1px solid #ccc';
-        placeholder.style.backgroundColor = '#f0f0f0';
-        placeholder.textContent = '[External iframe removed]';
+        placeholder.className = 'offline-placeholder iframe-placeholder';
+        placeholder.innerHTML = `
+          <div class="placeholder-icon">⊡</div>
+          <div class="placeholder-text">
+            <strong>Embedded Content</strong>
+            <span>${iframe.getAttribute('src') || iframe.getAttribute('title') || 'External content unavailable offline'}</span>
+          </div>
+        `;
         iframe.parentNode.replaceChild(placeholder, iframe);
       });
       
       // 3. Handle images - replace with placeholders or data URLs
       const images = doc.querySelectorAll('img');
       images.forEach(img => {
-        // Replace src with a placeholder
-        img.setAttribute('alt', img.getAttribute('alt') || img.getAttribute('src') || '[Image]');
-        img.removeAttribute('srcset');
-        img.removeAttribute('data-src');
+        const altText = img.getAttribute('alt') || img.getAttribute('title') || 'Image';
+        const srcText = img.getAttribute('src') || '';
         
         // Replace with a placeholder
         const placeholder = doc.createElement('div');
-        placeholder.style.padding = '5px';
-        placeholder.style.border = '1px dashed #ccc';
-        placeholder.style.maxWidth = '300px';
-        placeholder.style.backgroundColor = '#f8f8f8';
-        placeholder.style.color = '#666';
-        placeholder.style.textAlign = 'center';
-        placeholder.innerHTML = `[Image: ${img.getAttribute('alt')}]`;
+        placeholder.className = 'offline-placeholder image-placeholder';
+        
+        // Try to get some context from the image dimensions for better layout
+        let width = img.getAttribute('width') || '';
+        let height = img.getAttribute('height') || '';
+        if (width) placeholder.style.width = width + 'px';
+        if (width && height) placeholder.style.aspectRatio = width + '/' + height;
+        
+        placeholder.innerHTML = `
+          <div class="placeholder-icon">🖼️</div>
+          <div class="placeholder-text">
+            <strong>${altText}</strong>
+            ${srcText && srcText.length < 60 ? `<span>${srcText}</span>` : ''}
+          </div>
+        `;
         img.parentNode.replaceChild(placeholder, img);
       });
       
@@ -1254,27 +1396,65 @@
       const media = doc.querySelectorAll('video, audio, source, track');
       media.forEach(el => {
         const placeholder = doc.createElement('div');
-        placeholder.style.padding = '10px';
-        placeholder.style.border = '1px solid #ccc';
-        placeholder.style.backgroundColor = '#f0f0f0';
-        placeholder.textContent = `[${el.tagName.toLowerCase()} removed]`;
-        el.parentNode.replaceChild(placeholder, el);
+        placeholder.className = 'offline-placeholder media-placeholder';
+        
+        const mediaType = el.tagName.toLowerCase() === 'video' ? 'Video' : 
+                          el.tagName.toLowerCase() === 'audio' ? 'Audio' : 'Media';
+        
+        placeholder.innerHTML = `
+          <div class="placeholder-icon">${mediaType === 'Video' ? '▶️' : '🔊'}</div>
+          <div class="placeholder-text">
+            <strong>${mediaType} Content</strong>
+            <span>${el.getAttribute('src') || el.getAttribute('title') || 'Unavailable offline'}</span>
+          </div>
+        `;
+        
+        if (el.parentNode) {
+          // Only replace if it has a parent (not already replaced)
+          if (el.parentNode.tagName.toLowerCase() !== 'audio' && 
+              el.parentNode.tagName.toLowerCase() !== 'video') {
+            el.parentNode.replaceChild(placeholder, el);
+          } else if (!el.parentNode.processed) {
+            // Mark the parent as processed to avoid duplicate replacements
+            el.parentNode.processed = true;
+            if (el.parentNode.parentNode) {
+              el.parentNode.parentNode.replaceChild(placeholder, el.parentNode);
+            }
+          }
+        }
       });
       
       // 5. Modify all links to prevent navigation
       const links = doc.querySelectorAll('a');
       links.forEach(link => {
         // Mark links but prevent navigation
-        const href = link.getAttribute('href');
-        if (href) {
-          // Add a title attribute with the original URL
-          link.setAttribute('title', `Link to: ${href}`);
-          // Disable the link
-          link.addEventListener('click', e => e.preventDefault());
-          link.setAttribute('href', 'javascript:void(0)');
-          link.style.color = '#0066cc';
-          link.style.textDecoration = 'underline';
-          link.style.cursor = 'pointer';
+        const href = link.getAttribute('href') || '';
+        
+        // Skip empty, javascript, or anchor links
+        if (!href || href.startsWith('javascript:') || href === '#' || href.startsWith('#')) {
+          return;
+        }
+        
+        // We'll visually distinguish internal vs external links
+        const isExternal = href.startsWith('http') || href.startsWith('www');
+        
+        // Store the original URL as a data attribute
+        link.setAttribute('data-original-url', href);
+        link.setAttribute('title', `Link to: ${href}`);
+        
+        // Replace href with a custom handler
+        link.setAttribute('href', 'javascript:void(0)');
+        link.setAttribute('onclick', 'checkLinkInDatabase(this)');
+        
+        // Add visual indicators for link types
+        if (isExternal) {
+          link.classList.add('external-link');
+          // Add a small external link icon for clarity
+          if (!link.innerHTML.includes('</span>')) {
+            link.innerHTML += ' <span class="link-icon">🔗</span>';
+          }
+        } else if (href) {
+          link.classList.add('internal-link');
         }
       });
       
@@ -1286,27 +1466,270 @@
       const embeds = doc.querySelectorAll('object, embed, applet');
       embeds.forEach(embed => {
         const placeholder = doc.createElement('div');
-        placeholder.style.padding = '10px';
-        placeholder.style.border = '1px solid #ccc';
-        placeholder.style.backgroundColor = '#f0f0f0';
-        placeholder.textContent = '[Embedded content removed]';
+        placeholder.className = 'offline-placeholder embed-placeholder';
+        placeholder.innerHTML = `
+          <div class="placeholder-icon">⚠️</div> 
+          <div class="placeholder-text">
+            <strong>Embedded Content</strong>
+            <span>Interactive content unavailable offline</span>
+          </div>
+        `;
         embed.parentNode.replaceChild(placeholder, embed);
+      });
+      
+      // 8. Format tables for better readability
+      const tables = doc.querySelectorAll('table');
+      tables.forEach(table => {
+        table.classList.add('offline-table');
+        
+        // Add a container for horizontal scrolling on small screens
+        const tableContainer = doc.createElement('div');
+        tableContainer.className = 'table-container';
+        table.parentNode.insertBefore(tableContainer, table);
+        tableContainer.appendChild(table);
+      });
+      
+      // 9. Adjust content width and text formatting for readability
+      const contentContainers = doc.querySelectorAll('div, article, section, main');
+      contentContainers.forEach(container => {
+        // Avoid setting max-width on small elements
+        if (container.children.length > 2) {
+          container.classList.add('content-container');
+        }
       });
       
       // Add custom styles for better offline readability
       const style = doc.createElement('style');
       style.textContent = `
+        /* Base styles for better readability */
         body { 
-          font-family: Arial, sans-serif; 
+          font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", 
+                       Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", sans-serif;
           line-height: 1.6;
           color: #333;
+          background-color: #fff;
           padding: 15px;
-          max-width: 100%;
+          margin: 0;
+          font-size: 16px;
         }
-        img { max-width: 100%; height: auto; }
-        pre, code { background: #f5f5f5; padding: 2px 5px; border-radius: 3px; }
-        table { border-collapse: collapse; width: 100%; }
-        table, th, td { border: 1px solid #ccc; padding: 8px; }
+        
+        /* Emergency mode toggle - can be activated with a button */
+        body.emergency-mode {
+          background-color: #000;
+          color: #f0f0f0;
+        }
+        
+        body.emergency-mode a { color: #90caf9; }
+        body.emergency-mode .offline-placeholder { background-color: #1a1a1a; color: #e0e0e0; }
+        
+        /* Container width limits for better readability */
+        .content-container {
+          max-width: 800px;
+          margin-left: auto;
+          margin-right: auto;
+        }
+        
+        /* Headers */
+        h1, h2, h3, h4, h5, h6 {
+          margin-top: 1.5em;
+          margin-bottom: 0.75em;
+          line-height: 1.3;
+        }
+        
+        h1 { font-size: 2em; }
+        h2 { font-size: 1.75em; border-bottom: 1px solid #eee; padding-bottom: 0.3em; }
+        h3 { font-size: 1.5em; }
+        h4 { font-size: 1.25em; }
+        
+        /* Paragraphs and lists */
+        p, ul, ol { margin-bottom: 1.2em; }
+        li { margin-bottom: 0.5em; }
+        
+        /* Code blocks */
+        pre, code { 
+          background: #f5f5f5; 
+          padding: 0.2em 0.4em; 
+          border-radius: 3px; 
+          font-family: monospace; 
+          font-size: 0.9em;
+          overflow-x: auto;
+        }
+        
+        pre { padding: 1em; white-space: pre-wrap; }
+        pre code { background: none; padding: 0; }
+        
+        /* Tables */
+        .table-container {
+          overflow-x: auto;
+          margin-bottom: 1.5em;
+          border: 1px solid #e0e0e0;
+          border-radius: 4px;
+        }
+        
+        table.offline-table {
+          border-collapse: collapse;
+          width: 100%;
+          margin: 0;
+        }
+        
+        table.offline-table th, 
+        table.offline-table td {
+          border: 1px solid #e0e0e0;
+          padding: 8px 12px;
+          text-align: left;
+        }
+        
+        table.offline-table th {
+          background-color: #f5f5f5;
+          font-weight: bold;
+        }
+        
+        table.offline-table tr:nth-child(even) {
+          background-color: #f9f9f9;
+        }
+        
+        /* Link styles */
+        a {
+          color: #0366d6;
+          text-decoration: underline;
+          cursor: pointer;
+        }
+        
+        a.external-link {
+          color: #0366d6;
+          cursor: not-allowed;
+          position: relative;
+        }
+        
+        a.internal-link {
+          color: #6f42c1;
+          cursor: not-allowed;
+        }
+        
+        .link-icon {
+          font-size: 0.8em;
+          opacity: 0.7;
+          margin-left: 2px;
+        }
+        
+        /* Placeholder styling for removed elements */
+        .offline-placeholder {
+          display: flex;
+          align-items: center;
+          padding: 12px;
+          background-color: #f8f8f8;
+          border: 1px solid #ddd;
+          border-radius: 4px;
+          margin: 10px 0;
+          max-width: 100%;
+          font-size: 14px;
+        }
+        
+        .placeholder-icon {
+          font-size: 24px;
+          margin-right: 12px;
+          opacity: 0.7;
+        }
+        
+        .placeholder-text {
+          display: flex;
+          flex-direction: column;
+        }
+        
+        .placeholder-text strong {
+          margin-bottom: 4px;
+        }
+        
+        .placeholder-text span {
+          color: #666;
+          word-break: break-word;
+          font-size: 0.9em;
+        }
+        
+        /* Specific placeholder types */
+        .image-placeholder {
+          min-height: 80px;
+          justify-content: center;
+          text-align: center;
+          padding: 16px;
+          background-color: #f5f5f5;
+        }
+        
+        .iframe-placeholder {
+          border: 1px dashed #ccc;
+          background-color: #f0f0f0;
+        }
+        
+        .media-placeholder {
+          background-color: #f0f0f0;
+        }
+        
+        /* Blockquotes */
+        blockquote {
+          border-left: 4px solid #ddd;
+          margin-left: 0;
+          padding-left: 16px;
+          color: #666;
+        }
+        
+        /* Images that weren't replaced */
+        img { 
+          max-width: 100%; 
+          height: auto; 
+          display: block;
+          margin: 1em auto;
+        }
+        
+        /* Print styles */
+        @media print {
+          body {
+            font-size: 12pt;
+            color: #000;
+            background: #fff;
+          }
+          
+          .offline-placeholder {
+            border: 1px solid #ccc;
+            break-inside: avoid;
+          }
+        }
+        
+        /* Emergency mode button */
+        #emergency-mode-toggle {
+          position: fixed;
+          bottom: 20px;
+          right: 20px;
+          background: #ff5722;
+          color: white;
+          border: none;
+          border-radius: 50%;
+          width: 50px;
+          height: 50px;
+          font-size: 24px;
+          cursor: pointer;
+          box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 999;
+        }
+        
+        /* Responsive styles */
+        @media (max-width: 768px) {
+          body { padding: 10px; font-size: 15px; }
+          h1 { font-size: 1.8em; }
+          h2 { font-size: 1.5em; }
+        }
+        
+        /* High contrast mode for vision impairments */
+        body.high-contrast {
+          background: #000;
+          color: #fff;
+        }
+        
+        body.high-contrast a { color: #ffff00; }
+        body.high-contrast .offline-placeholder { background: #333; color: #fff; border-color: #666; }
+        body.high-contrast code, body.high-contrast pre { background: #333; color: #fff; }
       `;
       
       // Append our style to head
@@ -1321,6 +1744,17 @@
         if (html) {
           html.insertBefore(newHead, html.firstChild);
         }
+      }
+      
+      // Add emergency mode toggle button
+      const body = doc.querySelector('body');
+      if (body) {
+        const emergencyButton = doc.createElement('button');
+        emergencyButton.id = 'emergency-mode-toggle';
+        emergencyButton.title = 'Toggle Emergency Mode (Night/Low Power)';
+        emergencyButton.textContent = '🌙';
+        emergencyButton.setAttribute('onclick', 'document.body.classList.toggle("emergency-mode"); this.textContent = document.body.classList.contains("emergency-mode") ? "☀️" : "🌙";');
+        body.appendChild(emergencyButton);
       }
       
       // Return the sanitized HTML
@@ -1430,6 +1864,239 @@
         <span class="quote-author">- ${quote.author}</span>
       `;
     }
+
+    // Function to check if a link is in the database
+    function checkLinkInDatabase(linkElement) {
+      if (!db) {
+        console.warn("Database not loaded, cannot check links");
+        return;
+      }
+      
+      const url = linkElement.getAttribute('data-original-url');
+      if (!url) {
+        console.warn("No URL found for this link");
+        return;
+      }
+      
+      console.log(`Checking if URL exists in database: ${url}`);
+      statusBar.textContent = `Checking link: ${url}`;
+      
+      try {
+        // Normalize the URL for better matching chances
+        const normalizedUrl = normalizeUrl(url);
+        console.log(`Normalized URL: ${normalizedUrl}`);
+        
+        // Try a few different versions of the URL to increase match chances
+        const urlVariants = generateUrlVariants(normalizedUrl);
+        console.log("Trying URL variants:", urlVariants);
+        
+        // Build a query to find this URL
+        const placeholders = urlVariants.map(() => '?').join(',');
+        const query = `SELECT id, title, url FROM pages WHERE url IN (${placeholders}) LIMIT 1`;
+        
+        const stmt = db.prepare(query);
+        urlVariants.forEach((variant, index) => {
+          stmt.bind(index + 1, variant);
+        });
+        
+        // Execute the query
+        let result = null;
+        while (stmt.step()) {
+          result = stmt.getAsObject();
+          break; // We only need the first match
+        }
+        stmt.free();
+        
+        if (result && result.id) {
+          console.log(`Found matching page in database: ${result.title || result.url}`);
+          statusBar.textContent = `Following link to: ${result.title || result.url}`;
+          
+          // Save current position in navigation history if not already coming from history
+          const pageId = parseInt(result.id, 10);
+          
+          // Navigate to the found page
+          viewContent(pageId, true);
+          return;
+        }
+        
+        // If we reach here, no match was found
+        console.log("No matching page found in database");
+        statusBar.textContent = `Link not found in database: ${url}`;
+        
+        // Show a notification to the user
+        const linkInfo = document.createElement('div');
+        linkInfo.className = 'link-notification';
+        linkInfo.innerHTML = `
+          <div style="padding: 15px; background-color: #fff3cd; border: 1px solid #ffeeba; border-radius: 4px; margin: 10px 0; font-size: 14px; color: #856404;">
+            <strong>External Link Not Found</strong>
+            <p>The linked page "${url}" is not available in this offline archive.</p>
+          </div>
+        `;
+        
+        // Show notification near the link
+        const rect = linkElement.getBoundingClientRect();
+        const frameRect = contentView.getBoundingClientRect();
+        
+        linkInfo.style.position = 'absolute';
+        linkInfo.style.zIndex = '1000';
+        linkInfo.style.width = '300px';
+        
+        // Position the notification near the link but within the frame
+        const left = Math.min(Math.max(rect.left, frameRect.left), frameRect.right - 310);
+        linkInfo.style.left = `${left}px`;
+        linkInfo.style.top = `${rect.bottom + window.scrollY + 5}px`;
+        
+        document.body.appendChild(linkInfo);
+        
+        // Remove the notification after a few seconds
+        setTimeout(() => {
+          if (linkInfo.parentNode) {
+            linkInfo.parentNode.removeChild(linkInfo);
+          }
+        }, 5000);
+        
+      } catch (err) {
+        console.error("Error checking link in database:", err);
+        statusBar.textContent = `Error checking link: ${err.message}`;
+      }
+    }
+    
+    // Helper function to normalize URLs for better matching
+    function normalizeUrl(url) {
+      try {
+        let normalized = url.trim();
+        
+        // If the URL is relative, we can't fully normalize it
+        if (normalized.startsWith('/')) {
+          return normalized;
+        }
+        
+        // Add protocol if missing
+        if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
+          normalized = 'https://' + normalized;
+        }
+        
+        // Parse the URL
+        const parsedUrl = new URL(normalized);
+        
+        // Return just the pathname and search parts, which tend to be more stable
+        return parsedUrl.pathname + parsedUrl.search;
+        
+      } catch (err) {
+        console.warn("URL normalization failed:", err);
+        return url; // Return original URL if normalization fails
+      }
+    }
+    
+    // Generate variants of the URL to improve matching chances
+    function generateUrlVariants(url) {
+      const variants = [url];
+      
+      // Try with and without trailing slash
+      if (url.endsWith('/')) {
+        variants.push(url.slice(0, -1));
+      } else {
+        variants.push(url + '/');
+      }
+      
+      // Hostname variants (with and without www)
+      if (url.includes('://www.')) {
+        variants.push(url.replace('://www.', '://'));
+      } else if (url.includes('://')) {
+        const parts = url.split('://');
+        if (parts.length > 1) {
+          variants.push(parts[0] + '://www.' + parts[1]);
+        }
+      }
+      
+      return variants;
+    }
+    
+    // Add navigation controls to the content view
+    function addNavigationControls() {
+      // Create navigation controls if they don't exist
+      if (!document.getElementById('navigation-controls')) {
+        const nav = document.createElement('div');
+        nav.id = 'navigation-controls';
+        nav.className = 'navigation-controls';
+        nav.innerHTML = `
+          <button id="nav-back" title="Back to previous page" disabled>←</button>
+          <button id="nav-forward" title="Forward to next page" disabled>→</button>
+        `;
+        
+        // Add style
+        const navStyle = document.createElement('style');
+        navStyle.textContent = `
+          .navigation-controls {
+            display: flex;
+            gap: 5px;
+            margin-right: 10px;
+          }
+          
+          .navigation-controls button {
+            padding: 3px 10px;
+            background: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 16px;
+          }
+          
+          .navigation-controls button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+          }
+          
+          .navigation-controls button:hover:not(:disabled) {
+            background: #e9e9e9;
+          }
+        `;
+        document.head.appendChild(navStyle);
+        
+        // Insert before the back button
+        const backBtnContainer = backBtn.parentNode;
+        backBtnContainer.insertBefore(nav, backBtn);
+        
+        // Add event listeners
+        document.getElementById('nav-back').addEventListener('click', navigateBack);
+        document.getElementById('nav-forward').addEventListener('click', navigateForward);
+      }
+      
+      // Update controls state
+      updateNavigationControls();
+    }
+    
+    // Update the state of navigation controls
+    function updateNavigationControls() {
+      // Ensure controls exist
+      addNavigationControls();
+      
+      const backBtn = document.getElementById('nav-back');
+      const forwardBtn = document.getElementById('nav-forward');
+      
+      if (backBtn && forwardBtn) {
+        backBtn.disabled = currentHistoryPosition <= 0;
+        forwardBtn.disabled = currentHistoryPosition >= navigationHistory.length - 1;
+      }
+    }
+    
+    // Navigate to previous page in history
+    function navigateBack() {
+      if (currentHistoryPosition > 0) {
+        currentHistoryPosition--;
+        const pageId = navigationHistory[currentHistoryPosition];
+        viewContent(pageId, true);
+      }
+    }
+    
+    // Navigate to next page in history
+    function navigateForward() {
+      if (currentHistoryPosition < navigationHistory.length - 1) {
+        currentHistoryPosition++;
+        const pageId = navigationHistory[currentHistoryPosition];
+        viewContent(pageId, true);
+      }
+    }
   </script>
 </body>
-</html> 
+</html>
