@@ -53,21 +53,36 @@ async function initApp() {
   // Apply CRT flicker effect
   document.body.classList.add('flicker-effect');
   
-  // Load application data
-  await Promise.all([
-    loadTopics(),
-    loadStats(),
-    loadCrawlerStats()
-  ]);
-  
-  // Initialize UI
-  updateTopicsUI();
-  updateStatsUI();
-  
-  // Start polling for crawler stats
-  startStatsPoll();
-  
-  console.log('WorldEndArchive initialized');
+  try {
+    // Load application data
+    const promises = [loadCrawlerStats()];
+    
+    if (elements.topicsContainer) {
+      promises.push(loadTopics());
+    }
+    
+    if (elements.statsContainer) {
+      promises.push(loadStats());
+    }
+    
+    await Promise.all(promises);
+    
+    // Initialize UI - only if elements exist
+    if (elements.topicsContainer) {
+      updateTopicsUI();
+    }
+    
+    if (elements.statsContainer) {
+      updateStatsUI();
+    }
+    
+    // Start polling for crawler stats
+    startStatsPoll();
+    
+    console.log('WorldEndArchive initialized');
+  } catch (error) {
+    console.error('Error initializing application:', error);
+  }
 }
 
 /**
@@ -114,7 +129,11 @@ function cacheElements() {
     crawlerRuntime: document.getElementById('crawler-runtime'),
     successRate: document.getElementById('success-rate'),
     lastUrl: document.getElementById('last-url'),
-    downloadDbButton: document.getElementById('download-db')
+    downloadDbButton: document.getElementById('download-db'),
+    
+    // Crawler mode panel
+    standalonePanel: document.querySelector('.standalone-panel'),
+    standalonePanelTitle: document.querySelector('.standalone-title')
   };
 }
 
@@ -123,23 +142,84 @@ function cacheElements() {
  */
 function setupEventListeners() {
   // Search form submission
-  elements.searchButton.addEventListener('click', performSearch);
-  elements.searchInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') performSearch();
-  });
+  if (elements.searchButton) {
+    elements.searchButton.addEventListener('click', performSearch);
+  }
+  
+  if (elements.searchInput) {
+    elements.searchInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') performSearch();
+    });
+  }
   
   // Content viewer close
-  elements.contentClose.addEventListener('click', closeContentViewer);
+  if (elements.contentClose) {
+    elements.contentClose.addEventListener('click', closeContentViewer);
+  }
   
   // Download button confirmation
   if (elements.downloadDbButton) {
     elements.downloadDbButton.addEventListener('click', function(e) {
+      e.preventDefault(); // Prevent default to handle manually
+      
+      // Check if database exists and has size
+      if (!appState.dbStats.fileSizeBytes) {
+        alert('No database available for download.');
+        return;
+      }
+      
       const dbSizeStr = elements.dbSize.textContent;
-      // If database is larger than 100MB, show confirmation
+      let shouldProceed = true;
+      
+      // Size warning for large downloads
       if (appState.dbStats.fileSizeBytes > 100 * 1024 * 1024) {
-        if (!confirm(`Database size is ${dbSizeStr}. Download may take some time. Continue?`)) {
-          e.preventDefault();
-        }
+        shouldProceed = confirm(`Database size is ${dbSizeStr}. Download may take some time. Continue?`);
+      }
+      
+      if (shouldProceed) {
+        // Show downloading status
+        const originalText = elements.downloadDbButton.textContent;
+        elements.downloadDbButton.textContent = 'DOWNLOADING...';
+        elements.downloadDbButton.classList.add('downloading');
+        elements.downloadDbButton.disabled = true;
+        
+        // Create a fetch request to check headers first
+        fetch('/api/download-db', { method: 'HEAD' })
+          .then(response => {
+            // Check for crawler active warning
+            if (response.headers.get('X-Crawler-Active') === 'true') {
+              const warningAcknowledged = confirm('WARNING: Crawler is currently active. Downloading the database while crawling is in progress might result in a corrupted file. Continue anyway?');
+              if (!warningAcknowledged) {
+                throw new Error('Download canceled by user');
+              }
+            }
+            
+            // Proceed with download
+            const downloadLink = document.createElement('a');
+            downloadLink.href = '/api/download-db';
+            downloadLink.download = 'worldend_archive.db';
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+            document.body.removeChild(downloadLink);
+            
+            // Monitor download progress
+            const downloadCheckInterval = setInterval(() => {
+              // After 3 seconds, assume download has started and reset button
+              setTimeout(() => {
+                clearInterval(downloadCheckInterval);
+                elements.downloadDbButton.textContent = originalText;
+                elements.downloadDbButton.classList.remove('downloading');
+                elements.downloadDbButton.disabled = false;
+              }, 3000);
+            }, 500);
+          })
+          .catch(error => {
+            console.error('Download preparation failed:', error);
+            alert(`Download failed: ${error.message}`);
+            elements.downloadDbButton.textContent = originalText;
+            elements.downloadDbButton.classList.remove('downloading');
+            elements.downloadDbButton.disabled = false;
+          });
       }
     });
   }
@@ -147,7 +227,7 @@ function setupEventListeners() {
   // Keyboard shortcuts
   document.addEventListener('keydown', (e) => {
     // ESC key to close content viewer
-    if (e.key === 'Escape' && appState.currentView === 'content') {
+    if (e.key === 'Escape' && appState.currentView === 'content' && elements.contentViewer) {
       closeContentViewer();
     }
   });
@@ -174,8 +254,15 @@ function startStatsPoll() {
  */
 async function loadCrawlerStats() {
   try {
+    console.log('Fetching crawler stats...');
     const response = await fetch('/api/crawler-stats');
+    
+    if (!response.ok) {
+      throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+    }
+    
     const stats = await response.json();
+    console.log('Received stats:', stats);
     
     // Update application state
     appState.crawlerStats = stats.crawler || {
@@ -197,12 +284,19 @@ async function loadCrawlerStats() {
       topTopics: []
     };
     
+    console.log('Updated app state:', appState);
+    
     // Update UI
     updateCrawlerStatsUI();
     
     return stats;
   } catch (error) {
     console.error('Failed to load crawler stats:', error);
+    // Show error in UI
+    if (elements.crawlerStatusText) {
+      elements.crawlerStatusText.textContent = 'ERROR';
+      elements.crawlerStatusIndicator.className = 'status-indicator status-offline';
+    }
     return {};
   }
 }
@@ -218,10 +312,17 @@ function updateCrawlerStatsUI() {
     if (crawlerStats && crawlerStats.isRunning) {
       elements.crawlerStatusIndicator.className = 'status-indicator status-online';
       elements.crawlerStatusText.textContent = 'ACTIVE';
+    } else if (dbStats && dbStats.queueStatus && dbStats.queueStatus.in_progress > 0) {
+      // Backup check - if there are URLs in progress, show as active even if isRunning is false
+      elements.crawlerStatusIndicator.className = 'status-indicator status-online';
+      elements.crawlerStatusText.textContent = 'ACTIVE';
     } else {
-      elements.crawlerStatusIndicator.className = 'status-indicator status-idle';
+      elements.crawlerStatusIndicator.className = 'status-indicator status-offline';
       elements.crawlerStatusText.textContent = 'IDLE';
     }
+    
+    // Update standalone panel with crawler status
+    updateCrawlerModePanel(crawlerStats.isRunning || (dbStats && dbStats.queueStatus && dbStats.queueStatus.in_progress > 0));
   }
   
   // Database size
@@ -253,6 +354,11 @@ function updateCrawlerStatsUI() {
         progressFill.style.width = `${percentFilled}%`;
       }
     }
+    
+    // Update ETA to max storage if we have active crawling
+    if (crawlerStats && dbStats && dbStats.totalPages > 0) {
+      updateStorageETA(fileSizeBytes, crawlerStats.crawlSpeed);
+    }
   }
   
   // Crawl speed
@@ -262,17 +368,46 @@ function updateCrawlerStatsUI() {
   
   // Queue size
   if (elements.queueSize && crawlerStats) {
-    elements.queueSize.textContent = crawlerStats.queueSize || '0';
+    let queueTotal = crawlerStats.queueSize || 0;
+    
+    // Use database queue stats if available
+    if (dbStats && dbStats.queueStatus) {
+      queueTotal = (dbStats.queueStatus.pending || 0) + (dbStats.queueStatus.in_progress || 0);
+    }
+    
+    elements.queueSize.textContent = queueTotal;
   }
   
   // Processed URLs
   if (elements.processedUrls && crawlerStats) {
-    elements.processedUrls.textContent = crawlerStats.processedUrls || '0';
+    // Use crawler stats or database stats for processed URLs
+    const processedCount = crawlerStats.processedUrls || 0;
+    
+    // If database has total pages info, prefer that
+    if (dbStats && dbStats.totalPages) {
+      elements.processedUrls.textContent = dbStats.totalPages;
+    } else {
+      elements.processedUrls.textContent = processedCount;
+    }
   }
   
   // Runtime
   if (elements.crawlerRuntime && crawlerStats) {
-    elements.crawlerRuntime.textContent = formatTime(crawlerStats.runtime || 0);
+    let runtime = crawlerStats.runtime || 0;
+    
+    // If we have totalRuntime from the server, use it
+    if (crawlerStats.totalRuntime) {
+      runtime = crawlerStats.totalRuntime;
+      
+      // If crawler is running and has a start time, add the time since it started
+      if (crawlerStats.isRunning && crawlerStats.startTime) {
+        const startTimeMs = new Date(crawlerStats.startTime).getTime();
+        const elapsedSinceStart = Math.floor((Date.now() - startTimeMs) / 1000);
+        runtime += elapsedSinceStart;
+      }
+    }
+    
+    elements.crawlerRuntime.textContent = formatTime(runtime);
   }
   
   // Success rate
@@ -280,11 +415,6 @@ function updateCrawlerStatsUI() {
     elements.successRate.textContent = `${crawlerStats.successRate || 100}%`;
   }
   
-  // Last URL
-  if (elements.lastUrl && crawlerStats) {
-    elements.lastUrl.textContent = crawlerStats.lastProcessedUrl || 'N/A';
-    elements.lastUrl.title = crawlerStats.lastProcessedUrl || '';
-  }
   
   // Update topic distribution
   updateTopicDistribution();
@@ -467,11 +597,7 @@ function updateStatsUI() {
     elements.compressionRatio.textContent = stats.compressionRatio || '0:0';
   }
   
-  if (elements.lastCrawl) {
-    const lastCrawlDate = stats.lastCrawlDate ? new Date(stats.lastCrawlDate) : null;
-    elements.lastCrawl.textContent = lastCrawlDate ? 
-      lastCrawlDate.toLocaleString() : 'NEVER';
-  }
+
   
   // Update system status indicator
   if (elements.systemStatus) {
@@ -491,6 +617,8 @@ function updateStatsUI() {
  * Perform search based on current query and selected topics
  */
 async function performSearch() {
+  if (!elements.searchInput || !elements.resultsList) return;
+  
   // Update search query from input
   appState.searchQuery = elements.searchInput.value.trim();
   
@@ -670,6 +798,8 @@ function openContentViewer() {
  * Close the content viewer
  */
 function closeContentViewer() {
+  if (!elements.contentViewer) return;
+  
   elements.contentViewer.classList.remove('active');
   document.body.style.overflow = ''; // Restore scrolling
   appState.currentView = 'results';
@@ -699,6 +829,97 @@ function formatDate(dateString) {
   }
   
   return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+}
+
+/**
+ * Calculate and update ETA to reach maximum storage capacity
+ * @param {number} currentSizeBytes - Current database size in bytes
+ * @param {number} crawlSpeed - Current crawl speed in pages per minute
+ */
+function updateStorageETA(currentSizeBytes, crawlSpeed) {
+  let etaElement = document.getElementById('storage-eta');
+  if (!etaElement) {
+    // Create ETA element if it doesn't exist
+    etaElement = document.createElement('div');
+    etaElement.id = 'storage-eta';
+    etaElement.className = 'stat-subtitle';
+    
+    // Add after db percentage
+    const dbSizeElement = document.getElementById('db-size');
+    if (dbSizeElement && dbSizeElement.parentNode) {
+      dbSizeElement.parentNode.appendChild(etaElement);
+    }
+  }
+  
+  // If crawl speed is 0 or too low, can't calculate ETA
+  if (!crawlSpeed || crawlSpeed < 0.1) {
+    etaElement.textContent = 'ETA: N/A at current speed';
+    return;
+  }
+  
+  // Calculate remaining bytes
+  const remainingBytes = MAX_DB_SIZE_BYTES - currentSizeBytes;
+  
+  // If already at max, show 100%
+  if (remainingBytes <= 0) {
+    etaElement.textContent = 'Storage limit reached';
+    return;
+  }
+  
+  // Calculate average bytes per page based on current data
+  const averageBytesPerPage = currentSizeBytes / appState.dbStats.totalPages;
+  
+  if (!averageBytesPerPage || isNaN(averageBytesPerPage)) {
+    etaElement.textContent = 'ETA: Calculating...';
+    return;
+  }
+  
+  // Calculate how many more pages until max
+  const remainingPages = remainingBytes / averageBytesPerPage;
+  
+  // Calculate time in minutes
+  const minutesRemaining = remainingPages / crawlSpeed;
+  
+  // Format the ETA
+  if (minutesRemaining < 60) {
+    etaElement.textContent = `ETA: ~${Math.ceil(minutesRemaining)} minutes to capacity`;
+  } else if (minutesRemaining < 24 * 60) {
+    const hours = Math.ceil(minutesRemaining / 60);
+    etaElement.textContent = `ETA: ~${hours} hours to capacity`;
+  } else {
+    const days = Math.ceil(minutesRemaining / (24 * 60));
+    etaElement.textContent = `ETA: ~${days} days to capacity`;
+  }
+}
+
+/**
+ * Update the crawler mode panel based on crawler status
+ * @param {boolean} isActive - Whether the crawler is currently active
+ */
+function updateCrawlerModePanel(isActive) {
+  if (!elements.standalonePanel || !elements.standalonePanelTitle) return;
+  
+  if (isActive) {
+    elements.standalonePanel.classList.add('active');
+    elements.standalonePanelTitle.innerHTML = '⚠️ ATTENTION: CRAWLER MODE ACTIVE ⚠️';
+    
+    // Add a warning icon if not present
+    if (!document.querySelector('.crawler-mode-icon')) {
+      const warningIcon = document.createElement('div');
+      warningIcon.className = 'crawler-mode-icon';
+      warningIcon.innerHTML = `<svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>`;
+      elements.standalonePanelTitle.prepend(warningIcon);
+    }
+  } else {
+    elements.standalonePanel.classList.remove('active');
+    elements.standalonePanelTitle.innerHTML = 'CRAWLER MODE STANDBY';
+    
+    // Remove any existing warning icon
+    const warningIcon = document.querySelector('.crawler-mode-icon');
+    if (warningIcon) {
+      warningIcon.remove();
+    }
+  }
 }
 
 // Initialize application when DOM is loaded

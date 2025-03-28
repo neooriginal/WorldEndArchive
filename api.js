@@ -32,6 +32,9 @@ let crawlerStats = {
   totalRuntime: 0
 };
 
+// Database download state tracking to prevent concurrent operations
+let isDbDownloading = false;
+
 // Create Express router
 const router = express.Router();
 
@@ -185,22 +188,69 @@ router.get('/download-db', (req, res) => {
     const stats = fs.statSync(dbPath);
     const fileSizeInBytes = stats.size;
     
+    // Check if crawler is actively writing to the database
+    if (crawlerStats.isRunning) {
+      // We could either prevent download or just warn the user
+      // Here we chose to warn with a header that will be checked by frontend
+      res.setHeader('X-Crawler-Active', 'true');
+    }
+    
+    // For HEAD requests, just return headers without starting download
+    if (req.method === 'HEAD') {
+      res.setHeader('Content-Type', 'application/octet-stream');
+      res.setHeader('Content-Disposition', 'attachment; filename=worldend_archive.db');
+      res.setHeader('Content-Length', fileSizeInBytes);
+      return res.end();
+    }
+    
+    // For GET requests, proceed with download
+    
+    // Prevent concurrent downloads that might corrupt the file
+    if (isDbDownloading) {
+      return res.status(409).json({ error: 'Another download is already in progress. Please try again later.' });
+    }
+    
+    // Set download flag
+    isDbDownloading = true;
+    
     // Set headers for download
     res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('Content-Disposition', 'attachment; filename=worldend_archive.db');
     res.setHeader('Content-Length', fileSizeInBytes);
     
-    // Create read stream and pipe to response
+    // Create read stream
     const fileStream = fs.createReadStream(dbPath);
-    fileStream.pipe(res);
     
+    // Handle potential errors
     fileStream.on('error', (error) => {
+      isDbDownloading = false; // Reset flag
       console.error('Database download error:', error);
       if (!res.headersSent) {
         res.status(500).json({ error: 'Error streaming database file' });
+      } else {
+        // If headers already sent, we need to destroy the connection
+        res.destroy();
       }
     });
+    
+    // Handle when download completes
+    fileStream.on('end', () => {
+      isDbDownloading = false; // Reset flag
+    });
+    
+    // Handle client disconnect
+    req.on('close', () => {
+      if (isDbDownloading) {
+        fileStream.destroy(); // Close the file stream
+        isDbDownloading = false; // Reset flag
+        console.log('Database download canceled: Client disconnected');
+      }
+    });
+    
+    // Start the download
+    fileStream.pipe(res);
   } catch (error) {
+    isDbDownloading = false; // Reset flag
     console.error('Database download error:', error);
     res.status(500).json({ error: error.message });
   }
@@ -240,6 +290,55 @@ router.get('/crawler-stats', async (req, res) => {
       ...defaultCrawlerStats,
       ...(crawlerStats || {})
     };
+    
+    // Check if we should consider the crawler active based on queue status
+    // If there are URLs in progress, the crawler is active even if crawlerRunning is false
+    if (dbStats.queue && dbStats.queue.in_progress > 0) {
+      currentCrawlerStats.isRunning = true;
+    }
+    
+    // Update crawler stats based on database stats
+    if (dbStats.processed_pages !== undefined) {
+      currentCrawlerStats.processedUrls = parseInt(dbStats.processed_pages) || 0;
+    }
+    
+    // Update queue size from database stats
+    if (dbStats.queue) {
+      currentCrawlerStats.queueSize = (dbStats.queue.pending || 0) + (dbStats.queue.in_progress || 0);
+    }
+    
+    // Update last URL from database if available
+    if (dbStats.last_url) {
+      currentCrawlerStats.lastProcessedUrl = dbStats.last_url;
+    }
+    
+    // Get total runtime from database if available
+    if (dbStats.total_runtime) {
+      currentCrawlerStats.totalRuntime = parseInt(dbStats.total_runtime) || 0;
+    }
+    
+    // Calculate crawl speed based on recent activity
+    // If database has growth data, calculate a more realistic crawl speed
+    const totalPages = parseInt(dbStats.total_pages || 0);
+    const lastCrawlTime = dbStats.last_crawl_date ? new Date(dbStats.last_crawl_date).getTime() : null;
+    
+    if (lastCrawlTime && currentCrawlerStats.isRunning) {
+      // Calculate pages processed in last hour
+      const oneHourAgo = Date.now() - (60 * 60 * 1000);
+      const recentPagesProcessed = parseInt(dbStats.recent_pages_count || 0);
+      
+      if (recentPagesProcessed > 0) {
+        // Calculate pages per minute based on recent activity
+        currentCrawlerStats.crawlSpeed = Math.round(recentPagesProcessed / 60);
+      } else if (totalPages > 0) {
+        // Fallback: Calculate average crawl speed based on total pages and runtime
+        const runtime = currentCrawlerStats.totalRuntime;
+        if (runtime > 0) {
+          // Pages per minute
+          currentCrawlerStats.crawlSpeed = Math.round((totalPages / (runtime / 60)) * 10) / 10;
+        }
+      }
+    }
     
     // Format stats to include both database info and crawler status
     const stats = {
