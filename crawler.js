@@ -1,9 +1,10 @@
-const axios = require('axios');
-const cheerio = require('cheerio');
-const { URL } = require('url');
-const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
+const axios = require('axios');
+const cheerio = require('cheerio');
+const robots = require('robots-parser');
+const { URL } = require('url');
+const crypto = require('crypto');
 const { parse } = require('node-html-parser');
 const { 
   insertPage, 
@@ -339,19 +340,27 @@ async function crawlPage(url, parentUrl, depth) {
     
     console.log(`Content classified into ${topicCount} topics: ${Object.keys(topics).join(', ')}`);
     
-    // Compress content with LZMA
-    const compressionResult = await compressData(htmlContent);
-    
-    // Store in database
-    await insertPage(
-      url, 
-      title, 
-      compressionResult.compressed, 
-      compressionResult.hash,
-      compressionResult.originalSize, 
-      compressionResult.compressedSize,
-      topics
-    );
+    // Store the content directly without compression
+    try {
+      // Create hash for deduplication
+      const contentHash = crypto.createHash('sha256').update(htmlContent).digest('hex');
+      
+      // Store in database with original size
+      await insertPage(
+        url, 
+        title, 
+        Buffer.from(htmlContent), 
+        contentHash,
+        htmlContent.length, 
+        htmlContent.length,
+        topics
+      );
+      
+      console.log(`Successfully stored ${htmlContent.length} bytes for: ${url}`);
+    } catch (storageError) {
+      console.error(`Error storing content for ${url}: ${storageError.message}`);
+      throw storageError;
+    }
     
     // Extract links for further crawling if we haven't reached max depth
     if (depth < CONFIG.maxDepth) {

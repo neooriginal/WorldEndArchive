@@ -29,6 +29,7 @@
     "express": "^4.21.2",
     "lzma-native": "^8.0.6",
     "node-html-parser": "^7.0.1",
+    "robots-parser": "^3.0.1",
     "sqlite3": "^5.1.7"
   },
   "devDependencies": {

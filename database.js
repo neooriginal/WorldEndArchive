@@ -93,6 +93,9 @@ function insertPage(url, title, compressedContent, contentHash, contentSize, com
   // Update statistics
   const updateSetting = db.prepare('UPDATE settings SET value = ? WHERE key = ?');
   
+  // Note: We're now storing uncompressed content directly
+  console.log(`Storing uncompressed content for ${url} (${compressedContent ? compressedContent.length : 0} bytes)`);
+  
   // Use transaction to ensure data consistency
   db.transaction(() => {
     const info = insertPageStmt.run(url, title, compressedContent, contentHash, contentSize, compressedSize);

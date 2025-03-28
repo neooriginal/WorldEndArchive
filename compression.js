@@ -1,45 +1,38 @@
-const lzma = require('lzma-native');
 const crypto = require('crypto');
 
 /**
- * Compresses data using LZMA with high compression level
- * @param {Buffer|string} data - Data to compress
- * @param {number} level - Compression level (1-9)
- * @returns {Object} Result with compressed data, hash, and sizes
+ * No compression - just returns raw data with hash
+ * @param {Buffer|string} data - Data to store
+ * @returns {Object} Result with uncompressed data and hash
  */
-async function compressData(data, level = 9) {
+async function compressData(data) {
   // Ensure data is Buffer
   const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
   
   // Create content hash for deduplication
   const hash = crypto.createHash('sha256').update(buffer).digest('hex');
   
-  // Compress with LZMA
-  const compressedData = await lzma.compress(buffer, level);
-  
+  // No compression - just return the original data
   return {
-    compressed: compressedData,
+    compressed: buffer,
     hash: hash,
     originalSize: buffer.length,
-    compressedSize: compressedData.length
+    compressedSize: buffer.length
   };
 }
 
 /**
- * Decompresses LZMA data
- * @param {Buffer} compressedData - LZMA compressed data
- * @returns {Buffer} Decompressed data
+ * No decompression - just returns data as-is
+ * @param {Buffer} data - Data to return
+ * @returns {Buffer} Same data
  */
-async function decompressData(compressedData) {
-  if (!compressedData) {
-    throw new Error('No data provided for decompression');
+async function decompressData(data) {
+  if (!data) {
+    throw new Error('No data provided');
   }
   
-  try {
-    return await lzma.decompress(compressedData);
-  } catch (error) {
-    throw new Error(`Decompression failed: ${error.message}`);
-  }
+  // Just return the data as-is
+  return data;
 }
 
 /**

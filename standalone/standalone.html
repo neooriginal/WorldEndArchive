@@ -195,11 +195,34 @@
       background-color: rgba(0, 0, 0, 0.2);
       cursor: pointer;
       transition: all 0.3s;
+      position: relative;
+      overflow: hidden;
     }
     
     .result-item:hover {
       background-color: rgba(0, 50, 0, 0.3);
       border-color: var(--accent-color);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    }
+    
+    .result-item:hover::after {
+      content: "Click to view →";
+      position: absolute;
+      right: 10px;
+      bottom: 10px;
+      background-color: var(--accent-color);
+      color: var(--bg-color);
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-size: 0.8em;
+      opacity: 0.9;
+    }
+    
+    .result-item:active {
+      transform: translateY(0);
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+      background-color: rgba(0, 70, 0, 0.4);
     }
     
     .result-title {
@@ -316,6 +339,35 @@
       font-size: 0.8em;
       padding: 5px 10px;
     }
+    
+    .topics-filter-container {
+      margin: 15px 0;
+    }
+    
+    .topics-checkbox-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+      max-height: 150px;
+      overflow-y: auto;
+      padding: 5px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    
+    .topic-filter-item {
+      display: flex;
+      align-items: center;
+      background-color: #f5f5f5;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    
+    .topic-filter-item input {
+      margin-right: 5px;
+    }
   </style>
 </head>
 <body>
@@ -331,7 +383,7 @@
     <div class="db-selection" id="dbSelector">
       <h2>Load Database</h2>
       <p>Select your WorldEndArchive database file (.db):</p>
-      <input type="file" id="dbFile" accept=".db">
+      <input type="file" id="dbFile" accept=".db" disabled>
       <div class="loader" id="dbLoader"></div>
       <div class="db-info" id="dbInfo">
         <div class="info-item">
@@ -361,21 +413,20 @@
       </div>
     </div>
     
-    <div class="search-panel" id="searchPanel">
-      <h2>Search Archived Knowledge</h2>
-      <input type="search" id="searchInput" placeholder="Enter search terms...">
-      
-      <div class="search-options">
-        <div>
-          <label for="topicsFilter">Filter by topic:</label>
-          <select id="topicsFilter" multiple>
-            <!-- Topics will be populated from the database -->
-          </select>
+    <div class="search-panel" id="searchPanel" style="display: none;">
+      <h2>Search Archive</h2>
+      <div>
+        <input type="text" id="searchInput" placeholder="Search for pages...">
+      </div>
+      <div class="topics-filter-container">
+        <label>Filter by topics:</label>
+        <div id="topicsFilterContainer" class="topics-checkbox-container">
+          <!-- Topics will be populated from the database as checkboxes -->
         </div>
-        <div>
-          <button id="searchBtn">Search</button>
-          <button id="clearBtn">Clear</button>
-        </div>
+      </div>
+      <div>
+        <button id="searchBtn">Search</button>
+        <button id="clearBtn">Clear</button>
       </div>
     </div>
     
@@ -399,10 +450,10 @@
   
   <footer>
     <p>WorldEndArchive - Offline Knowledge Preservation System</p>
-    <p>License: <a href="http://creativecommons.org/licenses/by-nc/4.0/" style="color: var(--text-color);">CC BY-NC 4.0</a></p>
+    <p>GitHub: <a href="https://github.com/neooriginal/WorldEndArchive" style="color: var(--text-color);">WorldEndArchive</a></p>
   </footer>
   
-  <!-- SQLite library for the browser -->
+  <!-- Include SQL.js from CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
   <script>
     // Initialize variables
@@ -425,45 +476,66 @@
     const resultsList = document.getElementById('resultsList');
     const resultsCount = document.getElementById('resultsCount');
     const statusBar = document.getElementById('statusBar');
-    const topicsFilter = document.getElementById('topicsFilter');
+    const topicsFilterContainer = document.getElementById('topicsFilterContainer');
     const contentTitle = document.getElementById('contentTitle');
     const contentMeta = document.getElementById('contentMeta');
     const contentView = document.getElementById('contentView');
     const backBtn = document.getElementById('backBtn');
     
-    // Load SQL.js
-    initSqlJs();
-    
-    async function initSqlJs() {
+    // Initialize SQL.js
+    document.addEventListener('DOMContentLoaded', async function() {
+      statusBar.textContent = "Initializing SQL.js...";
+      
       try {
-        statusBar.textContent = "Initializing SQL.js...";
-        
-        // Fix the recursive call that's causing the error
-        const SQL = await window.initSqlJs({
-          locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
+        // Initialize SQL.js
+        const SQL = await initSqlJs({
+          // Use relative path for wasm file when possible, fallback to CDN
+          locateFile: file => 
+            'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.wasm' // CDN fallback
         });
         
-        // Store SQL constructor on the window object
+        // Store SQL globally for later use
         window.SQL = SQL;
+        
+        // Enable the database file input once SQL is ready
+        dbFile.disabled = false;
+        
+        // Display initial quote
+        displayRandomQuote();
+        
+        // Set up quote button handler
+        const newQuoteBtn = document.getElementById('newQuoteBtn');
+        if (newQuoteBtn) {
+          newQuoteBtn.addEventListener('click', displayRandomQuote);
+        }
         
         statusBar.textContent = "Ready. Load a database file to start.";
       } catch (err) {
-        statusBar.textContent = "Error loading SQL.js. Switching to offline version.";
-        console.error(err);
-        
-        // Try offline SQL.js load as fallback
-        const script = document.createElement('script');
-        script.src = 'sql-wasm.js'; // Local copy
-        document.head.appendChild(script);
-        
-        script.onload = function() {
-          statusBar.textContent = "Ready (offline mode). Load a database file to start.";
-        };
-        
-        script.onerror = function() {
-          statusBar.textContent = "Failed to load SQL.js. Please include sql-wasm.js in the same folder.";
-        };
+        statusBar.textContent = "Error loading SQL.js: " + err.message;
+        console.error("SQL loading error:", err);
       }
+    });
+    
+    // Helper function to check if data is binary or text
+    function isBinaryContent(buffer) {
+      // Check a sample of the content
+      const sample = buffer.slice(0, Math.min(1000, buffer.length));
+      let textCount = 0;
+      let binaryCount = 0;
+      
+      for (let i = 0; i < sample.length; i++) {
+        const byte = sample[i];
+        // Count text vs binary characters
+        if ((byte >= 32 && byte <= 126) || // Printable ASCII
+            byte === 9 || byte === 10 || byte === 13) { // Tab, LF, CR
+          textCount++;
+        } else {
+          binaryCount++;
+        }
+      }
+      
+      // If more than 10% is binary, consider it binary content
+      return (binaryCount / sample.length) > 0.1;
     }
     
     // Handle database file selection
@@ -479,6 +551,15 @@
         dbLoader.style.display = 'block';
         statusBar.textContent = "Loading database...";
         
+        // Reset state
+        if (db) {
+          db.close();
+          db = null;
+        }
+        dbInfo = {};
+        currentSearchResults = [];
+        availableTopics = [];
+        
         // Read the file
         const reader = new FileReader();
         
@@ -488,13 +569,13 @@
             const uInt8Array = new Uint8Array(reader.result);
             db = new SQL.Database(uInt8Array);
             
-            // Get database info
-            dbInfo = getDbInfo();
+            // Load database info
+            getDbInfo();
             
             // Display database info
             displayDbInfo();
             
-            // Get available topics
+            // Load available topics
             loadTopics();
             
             // Show search panel
@@ -504,7 +585,7 @@
             statusBar.textContent = `Database loaded. ${dbInfo.totalPages} pages available.`;
           } catch (err) {
             statusBar.textContent = "Error processing database: " + err.message;
-            console.error(err);
+            console.error("Database processing error:", err);
           } finally {
             dbLoader.style.display = 'none';
           }
@@ -539,22 +620,18 @@
           });
         }
         
-        // Get file size (not available directly, approximation)
-        const dbSizeBytes = file ? file.size : 0;
-        const dbSizeMB = (dbSizeBytes / (1024 * 1024)).toFixed(2);
-        
-        return {
-          totalPages,
+        dbInfo = {
+          totalPages: totalPages,
           lastUpdated: settings.last_crawl_date || 'Unknown',
-          dbSizeMB,
-          settings
+          dbSizeMB: '(size unavailable in browser)',
+          settings: settings
         };
       } catch (err) {
         console.error("Error getting DB info:", err);
-        return {
+        dbInfo = {
           totalPages: 0,
           lastUpdated: 'Unknown',
-          dbSizeMB: 0,
+          dbSizeMB: 'Unknown',
           settings: {}
         };
       }
@@ -563,7 +640,12 @@
     function displayDbInfo() {
       document.getElementById('totalPages').textContent = dbInfo.totalPages;
       document.getElementById('lastUpdate').textContent = formatDate(dbInfo.lastUpdated);
-      document.getElementById('dbSize').textContent = `${dbInfo.dbSizeMB} MB`;
+      document.getElementById('dbSize').textContent = dbInfo.dbSizeMB;
+      
+      // Update topics list if available
+      if (availableTopics.length > 0) {
+        document.getElementById('topicsList').textContent = availableTopics.join(', ');
+      }
     }
     
     function loadTopics() {
@@ -577,13 +659,24 @@
           // Update topics list in the info panel
           document.getElementById('topicsList').textContent = availableTopics.join(', ');
           
-          // Populate topics filter dropdown
-          topicsFilter.innerHTML = '';
+          // Populate topics filter with checkboxes
+          const topicsFilterContainer = document.getElementById('topicsFilterContainer');
+          topicsFilterContainer.innerHTML = '';
+          
           availableTopics.forEach(topic => {
-            const option = document.createElement('option');
-            option.value = topic;
-            option.textContent = topic.charAt(0).toUpperCase() + topic.slice(1);
-            topicsFilter.appendChild(option);
+            const topicItem = document.createElement('label');
+            topicItem.className = 'topic-filter-item';
+            
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'topic-filter';
+            checkbox.value = topic;
+            
+            const topicText = document.createTextNode(topic.charAt(0).toUpperCase() + topic.slice(1));
+            
+            topicItem.appendChild(checkbox);
+            topicItem.appendChild(topicText);
+            topicsFilterContainer.appendChild(topicItem);
           });
         }
       } catch (err) {
@@ -598,15 +691,16 @@
         performSearch();
       }
     });
-    
+     
     clearBtn.addEventListener('click', function() {
       searchInput.value = '';
-      topicsFilter.selectedIndex = -1;
+      document.querySelectorAll('.topic-filter').forEach(cb => cb.checked = false);
       resultsPanel.style.display = 'none';
       contentPanel.style.display = 'none';
       statusBar.textContent = `Database loaded. ${dbInfo.totalPages} pages available.`;
     });
-    
+
+    // Perform a search
     function performSearch() {
       if (!db) {
         statusBar.textContent = "No database loaded.";
@@ -614,164 +708,623 @@
       }
       
       try {
+        // Get search parameters
         const query = searchInput.value.trim();
+        const selectedTopics = [...document.querySelectorAll('.topic-filter:checked')].map(el => el.value);
         
-        // Get selected topics
-        const selectedTopics = Array.from(topicsFilter.selectedOptions).map(option => option.value);
+        // Clear previous results
+        resultsList.innerHTML = '';
+        
+        // Show recent entries if no search criteria provided
+        if (!query && selectedTopics.length === 0) {
+          const recentSql = `
+            SELECT p.id, p.title, p.url, p.content_size, p.date_archived 
+            FROM pages p
+            ORDER BY p.date_archived DESC
+            LIMIT 50
+          `;
+          
+          const recentResults = db.exec(recentSql);
+          if (recentResults && recentResults.length > 0) {
+            displayResults(recentResults[0], "Showing 50 most recent entries");
+            return;
+          } else {
+            statusBar.textContent = "No entries found in database";
+            return;
+          }
+        }
         
         // Build SQL query
-        let sql = `
-          SELECT p.id, p.url, p.title, p.date_archived,
-                 GROUP_CONCAT(pt.topic) as topics
-          FROM pages p
-        `;
+        let sql = '';
+        let params = [];
         
-        const params = [];
-        
-        if (selectedTopics.length > 0) {
-          sql += `
+        if (selectedTopics.length > 0 && query) {
+          // Search by both topics and query
+          sql = `
+            SELECT DISTINCT p.id, p.title, p.url, p.content_size, p.date_archived 
+            FROM pages p
             JOIN page_topics pt ON p.id = pt.page_id
             WHERE pt.topic IN (${selectedTopics.map(() => '?').join(',')})
-          `;
-          params.push(...selectedTopics);
-          
-          if (query) {
-            sql += ` AND (p.title LIKE ? OR p.url LIKE ?)`;
-            params.push(`%${query}%`, `%${query}%`);
-          }
-          
-          sql += ` GROUP BY p.id`;
-          
-          if (selectedTopics.length > 1) {
-            sql += ` HAVING COUNT(DISTINCT pt.topic) = ${selectedTopics.length}`;
-          }
-        } else if (query) {
-          sql += ` 
-            LEFT JOIN page_topics pt ON p.id = pt.page_id
-            WHERE (p.title LIKE ? OR p.url LIKE ?)
-            GROUP BY p.id
-          `;
-          params.push(`%${query}%`, `%${query}%`);
-        } else {
-          sql += ` 
-            LEFT JOIN page_topics pt ON p.id = pt.page_id
-            GROUP BY p.id
+            AND (
+              p.title LIKE ? OR 
+              p.url LIKE ?
+            )
+            ORDER BY p.date_archived DESC
             LIMIT 100
           `;
+          params = [...selectedTopics, `%${query}%`, `%${query}%`];
+        } else if (selectedTopics.length > 0) {
+          // Search by topics only
+          sql = `
+            SELECT DISTINCT p.id, p.title, p.url, p.content_size, p.date_archived 
+            FROM pages p
+            JOIN page_topics pt ON p.id = pt.page_id
+            WHERE pt.topic IN (${selectedTopics.map(() => '?').join(',')})
+            GROUP BY p.id
+            ORDER BY p.date_archived DESC
+            LIMIT 100
+          `;
+          params = [...selectedTopics];
+        } else {
+          // Search by query only - more permissive search
+          const terms = query.split(/\s+/).filter(term => term.length > 1);
+          
+          if (terms.length > 1) {
+            // Multi-word search - search each term independently
+            const likeConditions = terms.map(() => '(p.title LIKE ? OR p.url LIKE ?)').join(' OR ');
+            sql = `
+              SELECT DISTINCT p.id, p.title, p.url, p.content_size, p.date_archived 
+              FROM pages p
+              WHERE ${likeConditions}
+              ORDER BY p.date_archived DESC
+              LIMIT 100
+            `;
+            // Create params for each term
+            params = [];
+            terms.forEach(term => {
+              params.push(`%${term}%`, `%${term}%`);
+            });
+          } else {
+            // Single term search
+            sql = `
+              SELECT DISTINCT p.id, p.title, p.url, p.content_size, p.date_archived 
+              FROM pages p
+              WHERE p.title LIKE ? OR p.url LIKE ?
+              ORDER BY p.date_archived DESC
+              LIMIT 100
+            `;
+            params = [`%${query}%`, `%${query}%`];
+          }
         }
         
-        // Execute search
-        const stmt = db.prepare(sql);
-        params.forEach((param, index) => {
-          stmt.bind({[`$${index+1}`]: param});
-        });
+        // Execute search query with param binding
+        console.log("Executing search:", sql, params);
         
-        const results = [];
-        while (stmt.step()) {
-          const row = stmt.getAsObject();
-          results.push({
-            id: row.id,
-            url: row.url,
-            title: row.title || row.url,
-            date: row.date_archived,
-            topics: row.topics ? row.topics.split(',') : []
-          });
+        let results;
+        try {
+          if (params.length > 0) {
+            // Correct parameter binding
+            const stmt = db.prepare(sql);
+            
+            // Bind parameters properly - SQL.js uses 1-based indexing
+            params.forEach((param, index) => {
+              stmt.bind(index + 1, param);
+            });
+            
+            // Execute the statement and collect results
+            results = [];
+            while (stmt.step()) {
+              results.push(stmt.getAsObject());
+            }
+            stmt.free();
+            
+            // Format results similar to db.exec() format
+            if (results.length > 0) {
+              const columns = Object.keys(results[0]);
+              const values = results.map(row => Object.values(row));
+              results = [{columns, values}];
+            }
+          } else {
+            results = db.exec(sql);
+          }
+          
+          if (results && results.length > 0) {
+            displayResults(results[0], `Search results for "${query || 'selected topics'}"`);
+          } else {
+            resultsList.innerHTML = `
+              <div class="no-results">
+                <h3>No results found</h3>
+                <p>Try different search terms or topic filters</p>
+              </div>
+            `;
+            statusBar.textContent = "No results found";
+            
+            // Show results panel
+            resultsPanel.style.display = 'block';
+            contentPanel.style.display = 'none';
+          }
+        } catch (err) {
+          console.error("SQL execution error:", err);
+          throw err; // Re-throw to be caught by the outer try-catch
         }
-        
-        // Store results and display them
-        currentSearchResults = results;
-        displaySearchResults(results);
-        
-        statusBar.textContent = `Found ${results.length} results for "${query}"`;
       } catch (err) {
-        statusBar.textContent = "Error performing search: " + err.message;
-        console.error(err);
-      }
-    }
-    
-    function displaySearchResults(results) {
-      resultsList.innerHTML = '';
-      resultsCount.textContent = `Found ${results.length} results`;
-      
-      if (results.length === 0) {
-        resultsList.innerHTML = '<div class="result-item">No results found. Try different search terms or topics.</div>';
-        resultsPanel.style.display = 'block';
-        return;
-      }
-      
-      results.forEach(result => {
-        const resultItem = document.createElement('div');
-        resultItem.className = 'result-item';
-        resultItem.dataset.id = result.id;
+        console.error("Search error:", err);
+        statusBar.textContent = "Search error: " + err.message;
         
-        const titleEl = document.createElement('div');
-        titleEl.className = 'result-title';
-        titleEl.textContent = result.title || 'Untitled';
-        
-        const urlEl = document.createElement('div');
-        urlEl.className = 'result-url';
-        urlEl.textContent = result.url;
-        
-        const topicsEl = document.createElement('div');
-        if (result.topics && result.topics.length) {
-          result.topics.forEach(topic => {
-            const topicTag = document.createElement('span');
-            topicTag.className = 'topic-tag';
-            topicTag.textContent = topic;
-            topicsEl.appendChild(topicTag);
-          });
-        }
-        
-        resultItem.appendChild(titleEl);
-        resultItem.appendChild(urlEl);
-        resultItem.appendChild(topicsEl);
-        
-        resultItem.addEventListener('click', () => {
-          viewContent(result.id);
-        });
-        
-        resultsList.appendChild(resultItem);
-      });
-      
-      resultsPanel.style.display = 'block';
-    }
-    
-    function viewContent(id) {
-      try {
-        // Get page content
-        const contentResult = db.exec(`SELECT compressed_content, title, url FROM pages WHERE id = ${id}`);
-        
-        if (!contentResult || contentResult.length === 0 || contentResult[0].values.length === 0) {
-          statusBar.textContent = "Content not found.";
-          return;
-        }
-        
-        const [compressedContent, title, url] = contentResult[0].values[0];
-        
-        // Decompress content (if we had LZMA available - simplified in standalone)
-        // In a real implementation, you would need to include LZMA decompression
-        // For now, we'll just display a message about this limitation
-        
-        contentTitle.textContent = title || url;
-        contentMeta.innerHTML = `
-          <div class="result-url">${url}</div>
-          <div style="margin-top: 10px; color: var(--accent-color);">
-            Note: This standalone version cannot display the actual content due to decompression limitations.
-            Please use the full application to view the complete content.
+        resultsList.innerHTML = `
+          <div class="error">
+            <h3>Error during search</h3>
+            <p>${err.message}</p>
+            <pre>${err.stack}</pre>
           </div>
         `;
         
-        // In a full implementation, you would decompress and show the content
-        contentView.innerHTML = '<div style="padding: 20px; background-color: #eee; text-align: center;">Content preview unavailable in standalone mode.</div>';
+        // Show results panel
+        resultsPanel.style.display = 'block';
+        contentPanel.style.display = 'none';
+      }
+    }
+    
+    // Display results from a SQL.js query result
+    function displayResults(resultSet, statusMessage) {
+      // Store the column names to map indices to fields
+      const columns = resultSet.columns;
+      const idIndex = columns.indexOf('id');
+      const titleIndex = columns.indexOf('title');
+      const urlIndex = columns.indexOf('url');
+      const contentSizeIndex = columns.indexOf('content_size');
+      const dateArchivedIndex = columns.indexOf('date_archived');
+      
+      // Clear previous results first
+      resultsList.innerHTML = '';
+      
+      const resultData = resultSet.values.map(row => {
+        // Collect result fields using column indices
+        const id = row[idIndex];
+        const title = row[titleIndex] || '(No Title)';
+        const url = row[urlIndex] || '(No URL)';
+        const contentSize = row[contentSizeIndex] || 0;
+        const dateArchived = row[dateArchivedIndex] || null;
         
+        // Get topics for this result
+        let topics = [];
+        try {
+          const topicsResult = db.exec(`SELECT topic FROM page_topics WHERE page_id = ${id}`);
+          if (topicsResult && topicsResult.length > 0) {
+            topics = topicsResult[0].values.map(t => t[0]);
+          }
+        } catch (e) {
+          console.error(`Error getting topics for result ${id}:`, e);
+        }
+        
+        return { id, title, url, topics, contentSize, dateArchived };
+      });
+      
+      // Store current results for back button
+      currentSearchResults = resultData;
+      
+      // Display results
+      resultData.forEach(result => {
+        const resultElement = document.createElement('div');
+        resultElement.className = 'result-item';
+        resultElement.dataset.resultId = result.id; // Store ID in data attribute
+        resultElement.innerHTML = `
+          <div class="result-title">${result.title || '(No Title)'}</div>
+          <div class="result-url">${result.url || '(No URL)'}</div>
+          <div>
+            ${result.topics.map(topic => `<span class="topic-tag">${topic}</span>`).join(' ')}
+          </div>
+          <div style="font-size: 0.8em; color: #777; margin-top: 5px;">
+            Size: ${formatSize(result.contentSize)}
+            ${result.dateArchived ? ` | Date: ${new Date(result.dateArchived).toLocaleString()}` : ''}
+          </div>
+        `;
+        
+        // Add to results
+        resultsList.appendChild(resultElement);
+      });
+      
+      // Add a separate event listener for the entire results list using event delegation
+      // This is more reliable than individual listeners
+      resultsList.onclick = function(event) {
+        // Find the closest parent result item
+        const resultItem = event.target.closest('.result-item');
+        if (resultItem) {
+          const id = resultItem.dataset.resultId;
+          console.log("Result item clicked, id:", id);
+          if (id) {
+            viewContent(parseInt(id, 10));
+          }
+        }
+      };
+      
+      // Update status
+      statusBar.textContent = `${statusMessage} - Found ${resultData.length} ${resultData.length === 1 ? 'result' : 'results'}`;
+      
+      // Show results panel
+      resultsPanel.style.display = 'block';
+      contentPanel.style.display = 'none';
+    }
+    
+    function viewContent(id) {
+      console.log(`Attempting to view content for ID: ${id}`);
+      
+      try {
+        // Show content panel and loading indicator immediately
         contentPanel.style.display = 'block';
         resultsPanel.style.display = 'none';
         
-        statusBar.textContent = `Viewing: ${title || url}`;
+        // Show loading state
+        contentView.innerHTML = `
+          <div style="padding: 40px; text-align: center; background-color: #f8f8f8; border: 1px solid #ddd;">
+            <div class="loader" style="display: inline-block;"></div>
+            <p>Loading content...</p>
+          </div>
+        `;
+        
+        // Get page content with proper error handling
+        let contentResult;
+        try {
+          contentResult = db.exec(`SELECT compressed_content, title, url, content_size FROM pages WHERE id = ${id}`);
+          console.log("Content query executed, result:", contentResult);
+          
+          if (!contentResult || contentResult.length === 0 || contentResult[0].values.length === 0) {
+            throw new Error(`Content not found for ID ${id}`);
+          }
+        } catch (dbErr) {
+          console.error("Database error:", dbErr);
+          throw new Error(`Database error: ${dbErr.message}`);
+        }
+        
+        const [content, title, url, contentSize] = contentResult[0].values[0];
+        console.log(`Found content for "${title || url}" (${contentSize || 0} bytes)`);
+        
+        // Get topics for this page
+        let topics = [];
+        try {
+          const topicsResult = db.exec(`SELECT topic FROM page_topics WHERE page_id = ${id}`);
+          if (topicsResult && topicsResult.length > 0) {
+            topics = topicsResult[0].values.map(row => row[0]);
+          }
+          console.log("Topics found:", topics);
+        } catch (topicErr) {
+          console.warn("Error getting topics:", topicErr);
+          // Non-fatal error, continue without topics
+        }
+        
+        // Display the content metadata
+        contentTitle.textContent = title || url;
+        contentMeta.innerHTML = `
+          <div class="result-url">${url}</div>
+          <div style="margin-top: 10px; display: flex; justify-content: space-between; color: #666;">
+            <span>Topics: ${topics.join(', ')}</span>
+            <span>Size: ${formatSize(contentSize || (content ? content.length : 0))}</span>
+          </div>
+        `;
+        
+        // Update loading message
+        contentView.innerHTML = `
+          <div style="padding: 40px; text-align: center; background-color: #f8f8f8; border: 1px solid #ddd;">
+            <div class="loader" style="display: inline-block;"></div>
+            <p>Processing content...</p>
+          </div>
+        `;
+        
+        // Handle content display
+        if (content) {
+          console.log(`Processing ${content.length} bytes of content`);
+          
+          // Create a Uint8Array from the binary data
+          const contentBytes = new Uint8Array(content);
+          
+          // Check if this is binary content
+          if (isBinaryContent(contentBytes)) {
+            console.log("Detected binary content, not attempting text conversion");
+            const fallbackMessage = `[Binary content (${contentBytes.length} bytes) cannot be displayed as text]`;
+            displayContent(fallbackMessage);
+            statusBar.textContent = `Viewing binary content: ${title || url}`;
+            return;
+          }
+          
+          // Try to decode as text using different encodings
+          let textContent = null;
+          
+          for (const encoding of ['utf-8', 'iso-8859-1', 'windows-1252']) {
+            try {
+              const decoder = new TextDecoder(encoding);
+              const text = decoder.decode(contentBytes);
+              
+              // Basic check if it's readable text
+              if (text && text.length > 0) {
+                console.log(`Successfully decoded content as ${encoding}`);
+                textContent = text;
+                break;
+              }
+            } catch (e) {
+              console.log(`Error decoding with ${encoding}:`, e);
+            }
+          }
+          
+          // If we found text content, display it
+          if (textContent) {
+            displayContent(textContent);
+            statusBar.textContent = `Viewing: ${title || url}`;
+          } else {
+            // Fallback for binary content - create a simple message
+            const fallbackMessage = `[Binary content (${contentBytes.length} bytes) cannot be displayed as text]`;
+            displayContent(fallbackMessage);
+            statusBar.textContent = `Viewing binary content: ${title || url}`;
+          }
+        } else {
+          console.log("No content data available");
+          // No content available
+          contentView.innerHTML = `
+            <div style="padding: 40px; text-align: center; background-color: #f8f8f8; border: 1px solid #ddd; margin-top: 20px;">
+              <h3>No Content Available</h3>
+              <p>This page exists in the database but has no content stored.</p>
+            </div>
+          `;
+          statusBar.textContent = `Viewing (no content): ${title || url}`;
+        }
       } catch (err) {
+        console.error("Error in viewContent:", err);
         statusBar.textContent = "Error retrieving content: " + err.message;
-        console.error(err);
+        
+        // Always show the content panel even on error
+        contentPanel.style.display = 'block';
+        resultsPanel.style.display = 'none';
+        
+        // Display error message
+        contentTitle.textContent = "Error Loading Content";
+        contentMeta.innerHTML = `<div style="color: #cc0000;">Error: ${err.message}</div>`;
+        contentView.innerHTML = `
+          <div style="padding: 20px; background-color: #f8f8f8; border: 1px solid #ddd; text-align: center;">
+            <h3>Unable to load content</h3>
+            <p>${err.message}</p>
+            <p style="font-size: 0.9em; color: #666; margin-top: 20px;">
+              Error details: ${err.stack || 'No stack trace available'}
+            </p>
+          </div>
+        `;
       }
+    }
+    
+    // Helper function to display content in the content view
+    function displayContent(text) {
+      // Create a container for the content
+      const contentContainer = document.createElement('div');
+      contentContainer.style.padding = '20px';
+      contentContainer.style.backgroundColor = '#fff';
+      contentContainer.style.border = '1px solid #ddd';
+      contentContainer.style.borderRadius = '4px';
+      contentContainer.style.marginTop = '20px';
+      contentContainer.style.fontFamily = 'monospace, Courier, monospace';
+      contentContainer.style.lineHeight = '1.6';
+      
+      // Check if the content looks like HTML
+      const isHtml = /<\s*html|<\s*body|<\s*div|<\s*p|<\s*h[1-6]|<\s*span|<\s*a\s+href/i.test(text);
+      
+      if (isHtml) {
+        // If it's HTML, sanitize it before display in iframe
+        console.log("Content appears to be HTML, sanitizing before rendering");
+        
+        const frame = document.createElement('iframe');
+        frame.style.width = '100%';
+        frame.style.height = '500px';
+        frame.style.border = '1px solid #ddd';
+        frame.style.borderRadius = '3px';
+        frame.style.backgroundColor = '#fff';
+        frame.sandbox = 'allow-same-origin'; // Restrict iframe capabilities
+        
+        contentContainer.appendChild(frame);
+        contentView.innerHTML = '';
+        contentView.appendChild(contentContainer);
+        
+        // Once the iframe is in the DOM, set its content
+        setTimeout(() => {
+          try {
+            const doc = frame.contentDocument || frame.contentWindow.document;
+            
+            // Sanitize the HTML content - parse it first
+            const sanitizedContent = sanitizeHtml(text);
+            
+            doc.open();
+            doc.write(sanitizedContent);
+            doc.close();
+            
+            // Adjust iframe height to content
+            frame.onload = function() {
+              try {
+                const height = frame.contentDocument.body.scrollHeight;
+                frame.style.height = (height + 50) + 'px';
+              } catch(e) {
+                console.log("Couldn't adjust iframe height:", e);
+              }
+            };
+          } catch(e) {
+            console.error("Error writing to iframe:", e);
+            // Fall back to text display
+            contentView.innerHTML = '';
+            displayAsText(text);
+          }
+        }, 0);
+      } else {
+        // Not HTML, display as preformatted text
+        displayAsText(text);
+      }
+      
+      function displayAsText(content) {
+        // Display as preformatted text
+        const pre = document.createElement('pre');
+        pre.style.whiteSpace = 'pre-wrap';
+        pre.style.wordBreak = 'break-word';
+        pre.style.padding = '20px';
+        pre.style.margin = '0';
+        pre.style.backgroundColor = '#f5f5f5';
+        pre.style.border = '1px solid #ddd';
+        pre.style.borderRadius = '3px';
+        pre.style.overflow = 'auto';
+        pre.style.fontSize = '14px';
+        pre.style.color = '#333';
+        pre.style.lineHeight = '1.5';
+        
+        // Try basic formatting for JSON
+        if (/^\s*[\{\[]/.test(content) && /[\}\]]\s*$/.test(content)) {
+          try {
+            const jsonObj = JSON.parse(content);
+            content = JSON.stringify(jsonObj, null, 2);
+          } catch(e) {
+            // Not valid JSON, use as-is
+          }
+        }
+        
+        pre.textContent = content;
+        contentContainer.appendChild(pre);
+        
+        contentView.innerHTML = '';
+        contentView.appendChild(contentContainer);
+      }
+    }
+    
+    /**
+     * Sanitizes HTML content to remove external elements and scripts
+     * @param {string} html - The HTML content to sanitize
+     * @returns {string} - Sanitized HTML
+     */
+    function sanitizeHtml(html) {
+      console.log("Sanitizing HTML content...");
+      
+      // Create a temporary DOM parser
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      
+      // Remove all script tags
+      const scripts = doc.querySelectorAll('script');
+      scripts.forEach(script => script.remove());
+      
+      // Remove inline event handlers from all elements
+      const allElements = doc.querySelectorAll('*');
+      allElements.forEach(el => {
+        // Remove all on* attributes
+        for (const attr of el.attributes) {
+          if (attr.name.startsWith('on')) {
+            el.removeAttribute(attr.name);
+          }
+        }
+      });
+      
+      // Remove externally loaded resources
+      // 1. Remove external stylesheets
+      const styleLinks = doc.querySelectorAll('link[rel="stylesheet"]');
+      styleLinks.forEach(link => link.remove());
+      
+      // 2. Disable all iframes
+      const iframes = doc.querySelectorAll('iframe');
+      iframes.forEach(iframe => {
+        // Replace with a placeholder
+        const placeholder = doc.createElement('div');
+        placeholder.style.padding = '10px';
+        placeholder.style.border = '1px solid #ccc';
+        placeholder.style.backgroundColor = '#f0f0f0';
+        placeholder.textContent = '[External iframe removed]';
+        iframe.parentNode.replaceChild(placeholder, iframe);
+      });
+      
+      // 3. Handle images - replace with placeholders or data URLs
+      const images = doc.querySelectorAll('img');
+      images.forEach(img => {
+        // Replace src with a placeholder
+        img.setAttribute('alt', img.getAttribute('alt') || img.getAttribute('src') || '[Image]');
+        img.removeAttribute('srcset');
+        img.removeAttribute('data-src');
+        
+        // Replace with a placeholder
+        const placeholder = doc.createElement('div');
+        placeholder.style.padding = '5px';
+        placeholder.style.border = '1px dashed #ccc';
+        placeholder.style.maxWidth = '300px';
+        placeholder.style.backgroundColor = '#f8f8f8';
+        placeholder.style.color = '#666';
+        placeholder.style.textAlign = 'center';
+        placeholder.innerHTML = `[Image: ${img.getAttribute('alt')}]`;
+        img.parentNode.replaceChild(placeholder, img);
+      });
+      
+      // 4. Remove video and audio elements
+      const media = doc.querySelectorAll('video, audio, source, track');
+      media.forEach(el => {
+        const placeholder = doc.createElement('div');
+        placeholder.style.padding = '10px';
+        placeholder.style.border = '1px solid #ccc';
+        placeholder.style.backgroundColor = '#f0f0f0';
+        placeholder.textContent = `[${el.tagName.toLowerCase()} removed]`;
+        el.parentNode.replaceChild(placeholder, el);
+      });
+      
+      // 5. Modify all links to prevent navigation
+      const links = doc.querySelectorAll('a');
+      links.forEach(link => {
+        // Mark links but prevent navigation
+        const href = link.getAttribute('href');
+        if (href) {
+          // Add a title attribute with the original URL
+          link.setAttribute('title', `Link to: ${href}`);
+          // Disable the link
+          link.addEventListener('click', e => e.preventDefault());
+          link.setAttribute('href', 'javascript:void(0)');
+          link.style.color = '#0066cc';
+          link.style.textDecoration = 'underline';
+          link.style.cursor = 'pointer';
+        }
+      });
+      
+      // 6. Remove meta refresh tags
+      const metaRefresh = doc.querySelectorAll('meta[http-equiv="refresh"]');
+      metaRefresh.forEach(meta => meta.remove());
+      
+      // 7. Remove object, embed and applet tags
+      const embeds = doc.querySelectorAll('object, embed, applet');
+      embeds.forEach(embed => {
+        const placeholder = doc.createElement('div');
+        placeholder.style.padding = '10px';
+        placeholder.style.border = '1px solid #ccc';
+        placeholder.style.backgroundColor = '#f0f0f0';
+        placeholder.textContent = '[Embedded content removed]';
+        embed.parentNode.replaceChild(placeholder, embed);
+      });
+      
+      // Add custom styles for better offline readability
+      const style = doc.createElement('style');
+      style.textContent = `
+        body { 
+          font-family: Arial, sans-serif; 
+          line-height: 1.6;
+          color: #333;
+          padding: 15px;
+          max-width: 100%;
+        }
+        img { max-width: 100%; height: auto; }
+        pre, code { background: #f5f5f5; padding: 2px 5px; border-radius: 3px; }
+        table { border-collapse: collapse; width: 100%; }
+        table, th, td { border: 1px solid #ccc; padding: 8px; }
+      `;
+      
+      // Append our style to head
+      const head = doc.querySelector('head');
+      if (head) {
+        head.appendChild(style);
+      } else {
+        // If no head, create one
+        const newHead = doc.createElement('head');
+        newHead.appendChild(style);
+        const html = doc.querySelector('html');
+        if (html) {
+          html.insertBefore(newHead, html.firstChild);
+        }
+      }
+      
+      // Return the sanitized HTML
+      return doc.documentElement.outerHTML;
     }
     
     backBtn.addEventListener('click', function() {
@@ -790,6 +1343,16 @@
       } catch (e) {
         return dateStr;
       }
+    }
+    
+    // Format file size for display
+    function formatSize(bytes) {
+      if (!bytes || isNaN(bytes)) return '0 B';
+      
+      const sizes = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(1024));
+      
+      return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${sizes[i]}`;
     }
     
     // Quotes System
@@ -867,15 +1430,6 @@
         <span class="quote-author">- ${quote.author}</span>
       `;
     }
-
-    // Initialize quote display and button
-    document.addEventListener('DOMContentLoaded', function() {
-      const newQuoteBtn = document.getElementById('newQuoteBtn');
-      if (newQuoteBtn) {
-        displayRandomQuote();
-        newQuoteBtn.addEventListener('click', displayRandomQuote);
-      }
-    });
   </script>
 </body>
 </html> 
