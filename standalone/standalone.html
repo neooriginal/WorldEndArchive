@@ -453,6 +453,8 @@
     <p>GitHub: <a href="https://github.com/neooriginal/WorldEndArchive" style="color: var(--text-color);">WorldEndArchive</a></p>
   </footer>
   
+  <!-- Include SQL.js from CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
   <script>
     // Initialize variables
     let db = null;
@@ -482,20 +484,37 @@
     const contentView = document.getElementById('contentView');
     const backBtn = document.getElementById('backBtn');
     
-    // Initialize system
-    document.addEventListener('DOMContentLoaded', function() {
-      statusBar.textContent = "Ready. Load a database file to start.";
+    // Initialize SQL.js
+    document.addEventListener('DOMContentLoaded', async function() {
+      statusBar.textContent = "Initializing SQL.js...";
       
-      // Enable the database file input
-      dbFile.disabled = false;
-      
-      // Display initial quote
-      displayRandomQuote();
-      
-      // Set up quote button handler
-      const newQuoteBtn = document.getElementById('newQuoteBtn');
-      if (newQuoteBtn) {
-        newQuoteBtn.addEventListener('click', displayRandomQuote);
+      try {
+        // Initialize SQL.js
+        const SQL = await initSqlJs({
+          // Use relative path for wasm file when possible, fallback to CDN
+          locateFile: file => 
+            'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.wasm' // CDN fallback
+        });
+        
+        // Store SQL globally for later use
+        window.SQL = SQL;
+        
+        // Enable the database file input once SQL is ready
+        dbFile.disabled = false;
+        
+        // Display initial quote
+        displayRandomQuote();
+        
+        // Set up quote button handler
+        const newQuoteBtn = document.getElementById('newQuoteBtn');
+        if (newQuoteBtn) {
+          newQuoteBtn.addEventListener('click', displayRandomQuote);
+        }
+        
+        statusBar.textContent = "Ready. Load a database file to start.";
+      } catch (err) {
+        statusBar.textContent = "Error loading SQL.js: " + err.message;
+        console.error("SQL loading error:", err);
       }
     });
     
@@ -535,23 +554,22 @@
         statusBar.textContent = "Loading database...";
         
         // Reset state
-        db = null;
+        if (db) {
+          db.close();
+          db = null;
+        }
         dbInfo = {};
         currentSearchResults = [];
         availableTopics = [];
         
-        // Read the file as JSON text
+        // Read the file
         const reader = new FileReader();
         
         reader.onload = async function() {
           try {
-            // Parse the JSON content
-            const jsonText = new TextDecoder().decode(new Uint8Array(reader.result));
-            db = JSON.parse(jsonText);
-            
-            if (!db.pages || !Array.isArray(db.pages)) {
-              throw new Error("Invalid database format: missing pages array");
-            }
+            // Initialize database from the file
+            const uInt8Array = new Uint8Array(reader.result);
+            db = new SQL.Database(uInt8Array);
             
             // Load database info
             getDbInfo();
@@ -591,10 +609,18 @@
     function getDbInfo() {
       try {
         // Get total pages
-        const totalPages = db.pages.length;
+        const totalPagesResult = db.exec("SELECT COUNT(*) as count FROM pages")[0];
+        const totalPages = totalPagesResult.values[0][0];
         
         // Get settings
-        const settings = db.settings || {};
+        const settingsResult = db.exec("SELECT key, value FROM settings");
+        const settings = {};
+        
+        if (settingsResult.length > 0) {
+          settingsResult[0].values.forEach(row => {
+            settings[row[0]] = row[1];
+          });
+        }
         
         dbInfo = {
           totalPages: totalPages,
@@ -627,38 +653,34 @@
     function loadTopics() {
       try {
         // Get all unique topics
-        const topicsSet = new Set();
+        const topicsResult = db.exec("SELECT DISTINCT topic FROM page_topics ORDER BY topic");
         
-        if (db.page_topics && Array.isArray(db.page_topics)) {
-          db.page_topics.forEach(pt => {
-            if (pt.topic) topicsSet.add(pt.topic);
+        if (topicsResult.length > 0) {
+          availableTopics = topicsResult[0].values.map(row => row[0]);
+          
+          // Update topics list in the info panel
+          document.getElementById('topicsList').textContent = availableTopics.join(', ');
+          
+          // Populate topics filter with checkboxes
+          const topicsFilterContainer = document.getElementById('topicsFilterContainer');
+          topicsFilterContainer.innerHTML = '';
+          
+          availableTopics.forEach(topic => {
+            const topicItem = document.createElement('label');
+            topicItem.className = 'topic-filter-item';
+            
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'topic-filter';
+            checkbox.value = topic;
+            
+            const topicText = document.createTextNode(topic.charAt(0).toUpperCase() + topic.slice(1));
+            
+            topicItem.appendChild(checkbox);
+            topicItem.appendChild(topicText);
+            topicsFilterContainer.appendChild(topicItem);
           });
         }
-        
-        availableTopics = Array.from(topicsSet).sort();
-        
-        // Update topics list in the info panel
-        document.getElementById('topicsList').textContent = availableTopics.join(', ');
-        
-        // Populate topics filter with checkboxes
-        const topicsFilterContainer = document.getElementById('topicsFilterContainer');
-        topicsFilterContainer.innerHTML = '';
-        
-        availableTopics.forEach(topic => {
-          const topicItem = document.createElement('label');
-          topicItem.className = 'topic-filter-item';
-          
-          const checkbox = document.createElement('input');
-          checkbox.type = 'checkbox';
-          checkbox.className = 'topic-filter';
-          checkbox.value = topic;
-          
-          const topicText = document.createTextNode(topic.charAt(0).toUpperCase() + topic.slice(1));
-          
-          topicItem.appendChild(checkbox);
-          topicItem.appendChild(topicText);
-          topicsFilterContainer.appendChild(topicItem);
-        });
       } catch (err) {
         console.error("Error loading topics:", err);
       }
@@ -689,70 +711,143 @@
       
       try {
         // Get search parameters
-        const query = searchInput.value.trim().toLowerCase();
+        const query = searchInput.value.trim();
         const selectedTopics = [...document.querySelectorAll('.topic-filter:checked')].map(el => el.value);
         
         // Clear previous results
         resultsList.innerHTML = '';
         
-        // Filter pages
-        let results = [...db.pages];
-        
-        // If topics selected, filter by topic
-        if (selectedTopics.length > 0 && db.page_topics && Array.isArray(db.page_topics)) {
-          // Find page IDs with selected topics
-          const pageIds = new Set();
-          db.page_topics.forEach(pt => {
-            if (selectedTopics.includes(pt.topic)) {
-              pageIds.add(pt.page_id);
-            }
-          });
-          
-          // Filter pages that have at least one of the selected topics
-          results = results.filter(page => pageIds.has(page.id));
-        }
-        
-        // If search query, filter by title/url
-        if (query) {
-          results = results.filter(page => {
-            const title = (page.title || '').toLowerCase();
-            const url = (page.url || '').toLowerCase();
-            return title.includes(query) || url.includes(query);
-          });
-        }
-        
-        // Sort by date archived (newest first)
-        results.sort((a, b) => {
-          const dateA = a.date_archived ? new Date(a.date_archived) : new Date(0);
-          const dateB = b.date_archived ? new Date(b.date_archived) : new Date(0);
-          return dateB - dateA;
-        });
-        
-        // Limit to 100 results
-        if (results.length > 100) {
-          results = results.slice(0, 100);
-        }
-        
-        if (results.length > 0) {
-          const statusMsg = query ? 
-            `Search results for "${query}"` : 
-            (selectedTopics.length > 0 ? 
-              `Filtered by topics: ${selectedTopics.join(', ')}` : 
-              `Showing ${Math.min(50, results.length)} most recent entries`);
-              
-          displayResults(results, statusMsg);
-        } else {
-          resultsPanel.style.display = 'block';
-          contentPanel.style.display = 'none';
-          
-          resultsList.innerHTML = `
-            <div class="no-results">
-              <h3>No results found</h3>
-              <p>Try different search terms or topic filters</p>
-            </div>
+        // Show recent entries if no search criteria provided
+        if (!query && selectedTopics.length === 0) {
+          const recentSql = `
+            SELECT p.id, p.title, p.url, p.content_size, p.date_archived 
+            FROM pages p
+            ORDER BY p.date_archived DESC
+            LIMIT 50
           `;
           
-          statusBar.textContent = "No results found";
+          const recentResults = db.exec(recentSql);
+          if (recentResults && recentResults.length > 0) {
+            displayResults(recentResults[0], "Showing 50 most recent entries");
+            return;
+          } else {
+            statusBar.textContent = "No entries found in database";
+            return;
+          }
+        }
+        
+        // Build SQL query
+        let sql = '';
+        let params = [];
+        
+        if (selectedTopics.length > 0 && query) {
+          // Search by both topics and query
+          sql = `
+            SELECT DISTINCT p.id, p.title, p.url, p.content_size, p.date_archived 
+            FROM pages p
+            JOIN page_topics pt ON p.id = pt.page_id
+            WHERE pt.topic IN (${selectedTopics.map(() => '?').join(',')})
+            AND (
+              p.title LIKE ? OR 
+              p.url LIKE ?
+            )
+            ORDER BY p.date_archived DESC
+            LIMIT 100
+          `;
+          params = [...selectedTopics, `%${query}%`, `%${query}%`];
+        } else if (selectedTopics.length > 0) {
+          // Search by topics only
+          sql = `
+            SELECT DISTINCT p.id, p.title, p.url, p.content_size, p.date_archived 
+            FROM pages p
+            JOIN page_topics pt ON p.id = pt.page_id
+            WHERE pt.topic IN (${selectedTopics.map(() => '?').join(',')})
+            GROUP BY p.id
+            ORDER BY p.date_archived DESC
+            LIMIT 100
+          `;
+          params = [...selectedTopics];
+        } else {
+          // Search by query only - more permissive search
+          const terms = query.split(/\s+/).filter(term => term.length > 1);
+          
+          if (terms.length > 1) {
+            // Multi-word search - search each term independently
+            const likeConditions = terms.map(() => '(p.title LIKE ? OR p.url LIKE ?)').join(' OR ');
+            sql = `
+              SELECT DISTINCT p.id, p.title, p.url, p.content_size, p.date_archived 
+              FROM pages p
+              WHERE ${likeConditions}
+              ORDER BY p.date_archived DESC
+              LIMIT 100
+            `;
+            // Create params for each term
+            params = [];
+            terms.forEach(term => {
+              params.push(`%${term}%`, `%${term}%`);
+            });
+          } else {
+            // Single term search
+            sql = `
+              SELECT DISTINCT p.id, p.title, p.url, p.content_size, p.date_archived 
+              FROM pages p
+              WHERE p.title LIKE ? OR p.url LIKE ?
+              ORDER BY p.date_archived DESC
+              LIMIT 100
+            `;
+            params = [`%${query}%`, `%${query}%`];
+          }
+        }
+        
+        // Execute search query with param binding
+        console.log("Executing search:", sql, params);
+        
+        let results;
+        try {
+          if (params.length > 0) {
+            // Correct parameter binding
+            const stmt = db.prepare(sql);
+            
+            // Bind parameters properly - SQL.js uses 1-based indexing
+            params.forEach((param, index) => {
+              stmt.bind(index + 1, param);
+            });
+            
+            // Execute the statement and collect results
+            results = [];
+            while (stmt.step()) {
+              results.push(stmt.getAsObject());
+            }
+            stmt.free();
+            
+            // Format results similar to db.exec() format
+            if (results.length > 0) {
+              const columns = Object.keys(results[0]);
+              const values = results.map(row => Object.values(row));
+              results = [{columns, values}];
+            }
+          } else {
+            results = db.exec(sql);
+          }
+          
+          if (results && results.length > 0) {
+            displayResults(results[0], `Search results for "${query || 'selected topics'}"`);
+          } else {
+            resultsList.innerHTML = `
+              <div class="no-results">
+                <h3>No results found</h3>
+                <p>Try different search terms or topic filters</p>
+              </div>
+            `;
+            statusBar.textContent = "No results found";
+            
+            // Show results panel
+            resultsPanel.style.display = 'block';
+            contentPanel.style.display = 'none';
+          }
+        } catch (err) {
+          console.error("SQL execution error:", err);
+          throw err; // Re-throw to be caught by the outer try-catch
         }
       } catch (err) {
         console.error("Search error:", err);
@@ -772,32 +867,39 @@
       }
     }
     
-    // Display results from search
+    // Display results from a SQL.js query result
     function displayResults(resultSet, statusMessage) {
+      // Store the column names to map indices to fields
+      const columns = resultSet.columns;
+      const idIndex = columns.indexOf('id');
+      const titleIndex = columns.indexOf('title');
+      const urlIndex = columns.indexOf('url');
+      const contentSizeIndex = columns.indexOf('content_size');
+      const dateArchivedIndex = columns.indexOf('date_archived');
+      
       // Clear previous results first
       resultsList.innerHTML = '';
       
-      const resultData = resultSet.map(row => {
+      const resultData = resultSet.values.map(row => {
+        // Collect result fields using column indices
+        const id = row[idIndex];
+        const title = row[titleIndex] || '(No Title)';
+        const url = row[urlIndex] || '(No URL)';
+        const contentSize = row[contentSizeIndex] || 0;
+        const dateArchived = row[dateArchivedIndex] || null;
+        
         // Get topics for this result
         let topics = [];
         try {
-          if (db.page_topics && Array.isArray(db.page_topics)) {
-            topics = db.page_topics
-              .filter(pt => pt.page_id === row.id)
-              .map(pt => pt.topic);
+          const topicsResult = db.exec(`SELECT topic FROM page_topics WHERE page_id = ${id}`);
+          if (topicsResult && topicsResult.length > 0) {
+            topics = topicsResult[0].values.map(t => t[0]);
           }
         } catch (e) {
-          console.error(`Error getting topics for result ${row.id}:`, e);
+          console.error(`Error getting topics for result ${id}:`, e);
         }
         
-        return { 
-          id: row.id, 
-          title: row.title || '(No Title)', 
-          url: row.url || '(No URL)', 
-          topics, 
-          contentSize: row.content_size || 0, 
-          dateArchived: row.date_archived 
-        };
+        return { id, title, url, topics, contentSize, dateArchived };
       });
       
       // Store current results for back button
@@ -809,8 +911,8 @@
         resultElement.className = 'result-item';
         resultElement.dataset.resultId = result.id; // Store ID in data attribute
         resultElement.innerHTML = `
-          <div class="result-title">${result.title}</div>
-          <div class="result-url">${result.url}</div>
+          <div class="result-title">${result.title || '(No Title)'}</div>
+          <div class="result-url">${result.url || '(No URL)'}</div>
           <div>
             ${result.topics.map(topic => `<span class="topic-tag">${topic}</span>`).join(' ')}
           </div>
@@ -884,26 +986,28 @@
         }
         
         // Get page content with proper error handling
-        const page = db.pages.find(p => p.id === id);
-        
-        if (!page) {
-          throw new Error(`Content not found for ID ${id}`);
+        let contentResult;
+        try {
+          contentResult = db.exec(`SELECT compressed_content, title, url, content_size FROM pages WHERE id = ${id}`);
+          console.log("Content query executed, result:", contentResult);
+          
+          if (!contentResult || contentResult.length === 0 || contentResult[0].values.length === 0) {
+            throw new Error(`Content not found for ID ${id}`);
+          }
+        } catch (dbErr) {
+          console.error("Database error:", dbErr);
+          throw new Error(`Database error: ${dbErr.message}`);
         }
         
-        const content = page.compressed_content;
-        const title = page.title;
-        const url = page.url;
-        const contentSize = page.content_size;
-        
+        const [content, title, url, contentSize] = contentResult[0].values[0];
         console.log(`Found content for "${title || url}" (${contentSize || 0} bytes)`);
         
         // Get topics for this page
         let topics = [];
         try {
-          if (db.page_topics && Array.isArray(db.page_topics)) {
-            topics = db.page_topics
-              .filter(pt => pt.page_id === id)
-              .map(pt => pt.topic);
+          const topicsResult = db.exec(`SELECT topic FROM page_topics WHERE page_id = ${id}`);
+          if (topicsResult && topicsResult.length > 0) {
+            topics = topicsResult[0].values.map(row => row[0]);
           }
           console.log("Topics found:", topics);
         } catch (topicErr) {
@@ -931,30 +1035,10 @@
         
         // Handle content display
         if (content) {
-          console.log(`Processing ${typeof content === 'string' ? content.length : 'binary'} content`);
+          console.log(`Processing ${content.length} bytes of content`);
           
-          // If content is a base64 string, decode it
-          let contentBytes;
-          if (typeof content === 'string' && content.startsWith('data:')) {
-            // Extract base64 data
-            const base64Data = content.split(',')[1];
-            const binaryStr = atob(base64Data);
-            contentBytes = new Uint8Array(binaryStr.length);
-            for (let i = 0; i < binaryStr.length; i++) {
-              contentBytes[i] = binaryStr.charCodeAt(i);
-            }
-          } else if (typeof content === 'string') {
-            // Regular string content
-            contentBytes = new TextEncoder().encode(content);
-          } else if (content instanceof Uint8Array) {
-            contentBytes = content;
-          } else if (content instanceof ArrayBuffer) {
-            contentBytes = new Uint8Array(content);
-          } else {
-            // Try to handle it as a string
-            const str = String(content);
-            contentBytes = new TextEncoder().encode(str);
-          }
+          // Create a Uint8Array from the binary data
+          const contentBytes = new Uint8Array(content);
           
           // Check if this is binary content
           if (isBinaryContent(contentBytes)) {
