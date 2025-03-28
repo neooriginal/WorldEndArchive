@@ -16,21 +16,12 @@ This folder contains the WorldEndArchive Reader - your portal to access all arch
 
 - `standalone.html` - The main application for accessing knowledge
 - `sql-wasm.js` - Technical component that makes database access possible
+- `sql-wasm.wasm` - Other technical component that makes database access possible
 - Your `.db` database file - Contains the actual archived information
 
-## Features
+## For Those Who Find This Archive
 
-- **Works completely offline** - No internet connection needed
-- **No installation required** - Just open the HTML file in any browser
-- **Powerful search capability** - Find knowledge by keywords or topics
-- **Topic filtering** - Focus on specific categories of knowledge
-- **Universal compatibility** - Works on any device with a web browser
-- **Psychological support** - Includes wisdom quotes for difficult times
-
-## Primary vs. Emergency Usage
-
-### Everyday Use
-This standalone reader is the primary interface for WorldEndArchive. Even during normal times, you should use this application to search and browse archived knowledge.
+You hold in your hands a beacon of hope. This collection of knowledge was compiled specifically to help humanity survive and eventually rebuild. Focus first on immediate survival needs: water, food, shelter, medicine. As stability returns, explore knowledge about agriculture, construction, and community building.
 
 ### Emergency Use
 In crisis situations, this standalone application becomes even more valuable:
@@ -39,9 +30,6 @@ In crisis situations, this standalone application becomes even more valuable:
 - Needs no network connectivity
 - Can run from any storage medium (USB drives, SD cards, etc.)
 
-## For Those Who Find This Archive
-
-You hold in your hands a beacon of hope. This collection of knowledge was compiled specifically to help humanity survive and eventually rebuild. Focus first on immediate survival needs: water, food, shelter, medicine. As stability returns, explore knowledge about agriculture, construction, and community building.
 
 ## Psychological Support In Crisis
 
@@ -65,17 +53,17 @@ If you're reading this in the aftermath of collapse, remember:
 
 The loss of our world as it was is a profound trauma. Allow yourself to grieve, but don't let grief consume you. Channel your memory of what was lost into preserving knowledge and skills for future generations.
 
-## Technical Limitations
-
-- Some content may not display properly due to compression limitations
-- You cannot add new content in this standalone version
-- Large databases may load slowly on older hardware
-
 ## Declaration of Purpose
 
 This archive exists because someone before the collapse cared enough about humanity's future to preserve knowledge against catastrophe. Honor their foresight by using this knowledge not just to survive, but to rebuild, improve, and ensure such knowledge is never lost again.
 
 May this archive light your path through darkness.
+
+
+https://github.com/neooriginal/WorldEndArchive
+
+##Good luck,
+##Neo
 
 ---
 
