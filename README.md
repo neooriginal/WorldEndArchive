@@ -79,8 +79,8 @@ This separation ensures that the knowledge archiving process can run on a powerf
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/worldendarchive.git
-   cd worldendarchive
+   git clone https://github.com/neooriginal/WorldEndArchive.git
+   cd WorldEndArchive
    ```
 
 2. Install dependencies:
