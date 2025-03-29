@@ -20,7 +20,9 @@ const appState = {
     crawlSpeed: 0,
     runtime: 0,
     successRate: 100,
-    lastProcessedUrl: null
+    lastProcessedUrl: null,
+    infiniteMode: false,
+    maxDbSize: 0
   },
   dbStats: {
     fileSize: '0 B',
@@ -192,28 +194,82 @@ function setupEventListeners() {
               }
             }
             
-            // Proceed with download
-            const downloadLink = document.createElement('a');
-            downloadLink.href = '/api/download-db';
-            downloadLink.download = 'worldend_archive.db';
-            document.body.appendChild(downloadLink);
-            downloadLink.click();
-            document.body.removeChild(downloadLink);
+            // Get file size from headers
+            const contentLength = response.headers.get('Content-Length');
+            const fileSize = parseInt(contentLength);
             
-            // Monitor download progress
-            const downloadCheckInterval = setInterval(() => {
-              // After 3 seconds, assume download has started and reset button
-              setTimeout(() => {
-                clearInterval(downloadCheckInterval);
-                elements.downloadDbButton.textContent = originalText;
-                elements.downloadDbButton.classList.remove('downloading');
-                elements.downloadDbButton.disabled = false;
-              }, 3000);
-            }, 500);
+            // Create progress bar
+            const progressBar = document.createElement('div');
+            progressBar.className = 'download-progress';
+            progressBar.innerHTML = `
+              <div class="progress-bar">
+                <div class="progress-fill"></div>
+              </div>
+              <div class="progress-text">0%</div>
+            `;
+            elements.downloadDbButton.parentNode.appendChild(progressBar);
+            
+            // Start download with progress tracking
+            return fetch('/api/download-db')
+              .then(response => {
+                const reader = response.body.getReader();
+                const contentLength = +response.headers.get('Content-Length');
+                let receivedLength = 0;
+                const chunks = [];
+                
+                return new ReadableStream({
+                  start(controller) {
+                    function push() {
+                      reader.read().then(({done, value}) => {
+                        if (done) {
+                          controller.close();
+                          return;
+                        }
+                        chunks.push(value);
+                        receivedLength += value.length;
+                        
+                        // Update progress
+                        const progress = (receivedLength / contentLength) * 100;
+                        progressBar.querySelector('.progress-fill').style.width = `${progress}%`;
+                        progressBar.querySelector('.progress-text').textContent = `${Math.round(progress)}%`;
+                        
+                        controller.enqueue(value);
+                        push();
+                      });
+                    }
+                    push();
+                  }
+                });
+              })
+              .then(stream => {
+                return new Response(stream);
+              })
+              .then(response => response.blob())
+              .then(blob => {
+                // Create download link
+                const url = URL.createObjectURL(blob);
+                const downloadLink = document.createElement('a');
+                downloadLink.href = url;
+                downloadLink.download = 'worldend_archive.db';
+                document.body.appendChild(downloadLink);
+                downloadLink.click();
+                document.body.removeChild(downloadLink);
+                URL.revokeObjectURL(url);
+                
+                // Remove progress bar after a short delay
+                setTimeout(() => {
+                  if (progressBar.parentNode) {
+                    progressBar.parentNode.removeChild(progressBar);
+                  }
+                }, 1000);
+              });
           })
           .catch(error => {
             console.error('Download preparation failed:', error);
             alert(`Download failed: ${error.message}`);
+          })
+          .finally(() => {
+            // Reset button state
             elements.downloadDbButton.textContent = originalText;
             elements.downloadDbButton.classList.remove('downloading');
             elements.downloadDbButton.disabled = false;
@@ -270,7 +326,9 @@ async function loadCrawlerStats() {
       crawlSpeed: 0,
       runtime: 0,
       successRate: 100,
-      lastProcessedUrl: null
+      lastProcessedUrl: null,
+      infiniteMode: false,
+      maxDbSize: 0
     };
     appState.dbStats = stats.database || {
       fileSize: '0 B',
@@ -303,119 +361,61 @@ async function loadCrawlerStats() {
  * Update crawler stats UI
  */
 function updateCrawlerStatsUI() {
-  const { crawlerStats, dbStats } = appState;
+  if (!elements.crawlerStats) return;
   
-  // Crawler status indicator
-  if (elements.crawlerStatusIndicator && elements.crawlerStatusText) {
-    if (crawlerStats && crawlerStats.isRunning) {
-      elements.crawlerStatusIndicator.className = 'status-indicator status-online';
-      elements.crawlerStatusText.textContent = 'ACTIVE';
-    } else if (dbStats && dbStats.queueStatus && dbStats.queueStatus.in_progress > 0) {
-      // Backup check - if there are URLs in progress, show as active even if isRunning is false
-      elements.crawlerStatusIndicator.className = 'status-indicator status-online';
-      elements.crawlerStatusText.textContent = 'ACTIVE';
-    } else {
-      elements.crawlerStatusIndicator.className = 'status-indicator status-offline';
-      elements.crawlerStatusText.textContent = 'IDLE';
-    }
-    
-    // Update standalone panel with crawler status
-    updateCrawlerModePanel(crawlerStats.isRunning || (dbStats && dbStats.queueStatus && dbStats.queueStatus.in_progress > 0));
+  const stats = appState.crawlerStats;
+  const dbStats = appState.dbStats;
+  
+  // Update status indicator
+  const statusIndicator = elements.crawlerStats.querySelector('.status-indicator');
+  if (statusIndicator) {
+    statusIndicator.className = `status-indicator status-${stats.isRunning ? 'online' : 'offline'}`;
   }
   
-  // Database size
-  if (elements.dbSize && dbStats) {
-    elements.dbSize.textContent = dbStats.fileSize || '0 B';
+  // Update stats grid
+  const statsGrid = elements.crawlerStats.querySelector('.stats-grid');
+  if (statsGrid) {
+    statsGrid.innerHTML = `
+      <div class="stat-item">
+        <div class="stat-label">Queue Size</div>
+        <div class="stat-value">${stats.queueSize}</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Processed URLs</div>
+        <div class="stat-value">${stats.processedUrls}</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Crawl Speed</div>
+        <div class="stat-value">${stats.crawlSpeed} pages/min</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Runtime</div>
+        <div class="stat-value">${formatDuration(stats.runtime)}</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Database Size</div>
+        <div class="stat-value">${dbStats.fileSize}</div>
+        <div class="stat-subtitle">${stats.infiniteMode ? 'Infinite Mode' : `Max: ${formatBytes(stats.maxDbSize)}`}</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Success Rate</div>
+        <div class="stat-value">${stats.successRate}%</div>
+      </div>
+    `;
   }
   
-  // Database size percentage
-  if (elements.dbSizePercent && dbStats) {
-    const fileSizeBytes = dbStats.fileSizeBytes || 0;
-    const percentFilled = Math.min(100, Math.round((fileSizeBytes / MAX_DB_SIZE_BYTES) * 100));
-    elements.dbSizePercent.textContent = `${percentFilled}%`;
-    
-    // Add progress bar if not exists
-    if (!document.querySelector('.db-progress')) {
-      const progressBar = document.createElement('div');
-      progressBar.className = 'db-progress';
-      
-      const progressFill = document.createElement('div');
-      progressFill.className = 'db-progress-fill';
-      progressFill.style.width = `${percentFilled}%`;
-      
-      progressBar.appendChild(progressFill);
-      elements.dbSize.parentNode.appendChild(progressBar);
-    } else {
-      // Update existing progress bar
-      const progressFill = document.querySelector('.db-progress-fill');
-      if (progressFill) {
-        progressFill.style.width = `${percentFilled}%`;
-      }
-    }
-    
-    // Update ETA to max storage if we have active crawling
-    if (crawlerStats && dbStats && dbStats.totalPages > 0) {
-      updateStorageETA(fileSizeBytes, crawlerStats.crawlSpeed);
-    }
+  // Update progress bar
+  const progressBar = elements.crawlerStats.querySelector('.db-progress-fill');
+  if (progressBar && stats.maxDbSize > 0) {
+    const progress = (dbStats.fileSizeBytes / stats.maxDbSize) * 100;
+    progressBar.style.width = `${Math.min(progress, 100)}%`;
   }
   
-  // Crawl speed
-  if (elements.crawlSpeed && crawlerStats) {
-    elements.crawlSpeed.textContent = crawlerStats.crawlSpeed || '0';
+  // Update last processed URL
+  const lastUrlElement = elements.crawlerStats.querySelector('.last-url');
+  if (lastUrlElement && stats.lastProcessedUrl) {
+    lastUrlElement.textContent = stats.lastProcessedUrl;
   }
-  
-  // Queue size
-  if (elements.queueSize && crawlerStats) {
-    let queueTotal = crawlerStats.queueSize || 0;
-    
-    // Use database queue stats if available
-    if (dbStats && dbStats.queueStatus) {
-      queueTotal = (dbStats.queueStatus.pending || 0) + (dbStats.queueStatus.in_progress || 0);
-    }
-    
-    elements.queueSize.textContent = queueTotal;
-  }
-  
-  // Processed URLs
-  if (elements.processedUrls && crawlerStats) {
-    // Use crawler stats or database stats for processed URLs
-    const processedCount = crawlerStats.processedUrls || 0;
-    
-    // If database has total pages info, prefer that
-    if (dbStats && dbStats.totalPages) {
-      elements.processedUrls.textContent = dbStats.totalPages;
-    } else {
-      elements.processedUrls.textContent = processedCount;
-    }
-  }
-  
-  // Runtime
-  if (elements.crawlerRuntime && crawlerStats) {
-    let runtime = crawlerStats.runtime || 0;
-    
-    // If we have totalRuntime from the server, use it
-    if (crawlerStats.totalRuntime) {
-      runtime = crawlerStats.totalRuntime;
-      
-      // If crawler is running and has a start time, add the time since it started
-      if (crawlerStats.isRunning && crawlerStats.startTime) {
-        const startTimeMs = new Date(crawlerStats.startTime).getTime();
-        const elapsedSinceStart = Math.floor((Date.now() - startTimeMs) / 1000);
-        runtime += elapsedSinceStart;
-      }
-    }
-    
-    elements.crawlerRuntime.textContent = formatTime(runtime);
-  }
-  
-  // Success rate
-  if (elements.successRate && crawlerStats) {
-    elements.successRate.textContent = `${crawlerStats.successRate || 100}%`;
-  }
-  
-  
-  // Update topic distribution
-  updateTopicDistribution();
 }
 
 /**

@@ -3,6 +3,9 @@ const fs = require('fs-extra');
 const drivelist = require('drivelist');
 const path = require('path');
 const chalk = require('chalk');
+const { exec } = require('child_process');
+const { promisify } = require('util');
+const execAsync = promisify(exec);
 
 // Path to the standalone folder (use absolute path)
 const STANDALONE_FOLDER = path.resolve(__dirname, '../standalone');
@@ -21,6 +24,25 @@ console.log(chalk.red("Warning: Put .db file in the standalone folder before run
 console.log(chalk.blue('✓ USB Flasher Started'));
 console.log(chalk.green(`Files will be flashed to: ${STANDALONE_FOLDER}`));
 console.log(chalk.yellow('Insert a USB drive to automatically flash files...'));
+
+// Function to rename USB drive
+async function renameDrive(drivePath) {
+  try {
+    // For Windows
+    if (process.platform === 'win32') {
+      // Get the drive letter from the path
+      const driveLetter = drivePath.charAt(0).toUpperCase() + ':';
+      await execAsync(`label ${driveLetter} WorldEndArchive`);
+      console.log(chalk.blue(`✓ Renamed drive to WorldEndArchive`));
+    } else {
+      // For Linux/Mac
+      await execAsync(`sudo e2label ${drivePath} WorldEndArchive`);
+      console.log(chalk.blue(`✓ Renamed drive to WorldEndArchive`));
+    }
+  } catch (error) {
+    console.warn(chalk.yellow(`Warning: Could not rename drive: ${error.message}`));
+  }
+}
 
 // Function to get all available drives
 async function getAvailableDrives() {
@@ -71,6 +93,9 @@ async function copyFilesToDrive(drivePath, driveDescription) {
   console.log(chalk.yellow(`Beginning copy to ${drivePath}...`));
   
   try {
+    // Try to rename the drive first
+    await renameDrive(drivePath);
+    
     // Create directory on the USB drive if it doesn't exist
     const targetDir = path.join(drivePath, 'standalone');
     await fs.ensureDir(targetDir);

@@ -15,7 +15,8 @@ const axios = require('axios');
 
 // Configuration
 const DEFAULT_PORT = process.env.PORT || 3000;
-const MAX_DB_SIZE_BYTES = 8 * 1024 * 1024 * 1024; // 8GB in bytes
+const MAX_DB_SIZE_BYTES = (parseInt(process.env.MAX_DB_SIZE_MB) || 8192) * 1024 * 1024; // Convert MB to bytes
+const INFINITE_CRAWL = process.env.INFINITE_CRAWL === 'false';
 
 // Crawler state
 let crawlerRunning = false;
@@ -193,156 +194,103 @@ function updateCrawlerStats(additionalStats = {}) {
 }
 
 /**
- * Start crawler automatically and keep running until size limit
+ * Check if database size limit is reached
+ * @returns {Promise<boolean>} True if limit is reached
+ */
+async function checkDatabaseSizeLimit() {
+  try {
+    const dbPath = path.join(__dirname, 'data', 'worldend_archive.db');
+    if (!fs.existsSync(dbPath)) {
+      return false;
+    }
+    
+    const stats = fs.statSync(dbPath);
+    return stats.size >= MAX_DB_SIZE_BYTES;
+  } catch (error) {
+    console.error('Error checking database size:', error);
+    return false;
+  }
+}
+
+/**
+ * Start automatic crawler
  */
 async function startAutomaticCrawler() {
   if (crawlerRunning) {
     console.log('Crawler is already running');
     return;
   }
-  
-  console.log('Starting automatic crawler...');
-  
-  // Check if there are pending URLs in the queue
-  const queueSize = await getQueueSize();
-  let seedUrls = [];
-  
-  if (queueSize > 0) {
-    console.log(`Found ${queueSize} URLs in the queue from previous run, continuing...`);
-    // The crawler will pick up pending URLs from the queue automatically
-  } else {
-    console.log('Queue is empty, starting with recommended seed URLs');
-    // Get recommended seed URLs if queue is empty
-    seedUrls = getRecommendedSeeds();
-  }
-  
-  // Get database stats for counters
+
   try {
-    const stats = await getStats();
-    
-    // Initialize counters from database stats
-    if (stats.processed_pages) {
-      pagesProcessed = parseInt(stats.processed_pages) || 0;
+    // Check if database size limit is reached
+    const sizeLimitReached = await checkDatabaseSizeLimit();
+    if (sizeLimitReached && !INFINITE_CRAWL) {
+      console.log('Database size limit reached. Stopping crawler.');
+      return;
     }
+
+    crawlerRunning = true;
+    crawlStartTime = Date.now();
     
-    if (stats.failed_pages) {
-      pagesFailed = parseInt(stats.failed_pages) || 0;
-    }
+    // Get recommended seed URLs
+    const seedUrls = await getRecommendedSeeds();
     
-    if (stats.total_runtime) {
-      totalRuntime = parseInt(stats.total_runtime) || 0;
-    }
+    // Start crawler with seed URLs
+    await startCrawler(seedUrls);
     
-    console.log(`Resuming with stats: ${pagesProcessed} processed, ${pagesFailed} failed, ${totalRuntime}s runtime`);
+    // Set up interval to check crawler status
+    crawlerInterval = setInterval(async () => {
+      try {
+        const queueSize = await getQueueSize();
+        const sizeLimitReached = await checkDatabaseSizeLimit();
+        
+        // Stop crawler if size limit reached and not in infinite mode
+        if (sizeLimitReached && !INFINITE_CRAWL) {
+          console.log('Database size limit reached. Stopping crawler.');
+          stopCrawler();
+          return;
+        }
+        
+        // Update crawler stats
+        const stats = {
+          isRunning: crawlerRunning,
+          queueSize,
+          processedUrls: pagesProcessed,
+          failedUrls: pagesFailed,
+          crawlSpeed: lastCrawlSpeed,
+          totalRuntime: Math.floor((Date.now() - crawlStartTime) / 1000) + totalRuntime
+        };
+        
+        await saveCrawlerStats(stats);
+        api.updateCrawlerStats(stats);
+        
+      } catch (error) {
+        console.error('Error updating crawler stats:', error);
+      }
+    }, 5000); // Update every 5 seconds
+    
   } catch (error) {
-    console.log('No previous stats found, starting fresh');
+    console.error('Error starting crawler:', error);
+    crawlerRunning = false;
+  }
+}
+
+/**
+ * Stop crawler
+ */
+function stopCrawler() {
+  if (!crawlerRunning) {
+    return;
   }
   
-  // Reset counter for new crawler run
-  crawlStartTime = Date.now();
-  crawlerRunning = true;
-  updateCrawlerStats({ lastProcessedUrl: null, queueSize: queueSize || seedUrls.length });
+  crawlerRunning = false;
+  if (crawlerInterval) {
+    clearInterval(crawlerInterval);
+    crawlerInterval = null;
+  }
   
-  // Track crawler events with callbacks
-  const crawlerCallbacks = {
-    onPageProcessed: (url, success) => {
-      if (success) {
-        pagesProcessed++;
-      } else {
-        pagesFailed++;
-      }
-      
-      // Stats will be persisted through updateCrawlerStats
-      updateCrawlerStats({ lastProcessedUrl: url });
-    },
-    onQueueUpdate: (queueSize) => {
-      updateCrawlerStats({ queueSize });
-    }
-  };
-  
-  // Start initial crawl
-  startCrawler(seedUrls, crawlerCallbacks).catch(err => {
-    console.error('Crawler error:', err);
-    crawlerRunning = false;
-    const runtime = Math.floor((Date.now() - crawlStartTime) / 1000);
-    totalRuntime += runtime;
-    crawlStartTime = null;
-    updateCrawlerStats();
-  }).finally(() => {
-    crawlerRunning = false;
-    const runtime = Math.floor((Date.now() - crawlStartTime) / 1000);
-    totalRuntime += runtime;
-    crawlStartTime = null;
-    updateCrawlerStats();
-    console.log('Initial crawl completed');
-  });
-  
-  // Set up periodic checks for database size and restart crawler if needed
-  crawlerInterval = setInterval(async () => {
-    // Skip if crawler is already running
-    if (crawlerRunning) return;
-    
-    try {
-      // Check database size
-      const dbPath = path.join(__dirname, 'data', 'worldend_archive.db');
-      const dbExists = fs.existsSync(dbPath);
-      
-      if (!dbExists) {
-        console.log('Database file does not exist yet');
-        return;
-      }
-      
-      // Get file size
-      const stats = fs.statSync(dbPath);
-      const fileSizeInBytes = stats.size;
-      
-      // Check database statistics
-      const dbStats = await getStats();
-      const totalCompressedBytes = parseInt(dbStats.total_size_compressed || 0);
-      const totalRawBytes = parseInt(dbStats.total_size_raw || 0);
-      
-      console.log(`Database file size: ${formatBytes(fileSizeInBytes)}`);
-      console.log(`Total compressed content: ${formatBytes(totalCompressedBytes)}`);
-      console.log(`Total raw content: ${formatBytes(totalRawBytes)}`);
-      
-      // Update queue size from database
-      const queueSize = dbStats.queue?.pending || 0;
-      updateCrawlerStats({ queueSize });
-      
-      // Check if we've reached the size limit
-      if (fileSizeInBytes >= MAX_DB_SIZE_BYTES) {
-        console.log(`Database has reached the size limit of ${formatBytes(MAX_DB_SIZE_BYTES)}`);
-        console.log('Automatic crawling stopped');
-        updateCrawlerStats({ isRunning: false });
-        clearInterval(crawlerInterval);
-        return;
-      }
-      
-      // Restart crawler with new seed URLs
-      console.log('Restarting crawler...');
-      crawlerRunning = true;
-      crawlStartTime = Date.now();
-      updateCrawlerStats({ lastProcessedUrl: null });
-      
-      startCrawler(seedUrls, crawlerCallbacks).catch(err => {
-        console.error('Crawler error:', err);
-        crawlerRunning = false;
-        const runtime = Math.floor((Date.now() - crawlStartTime) / 1000);
-        totalRuntime += runtime;
-        crawlStartTime = null;
-        updateCrawlerStats();
-      }).finally(() => {
-        crawlerRunning = false;
-        const runtime = Math.floor((Date.now() - crawlStartTime) / 1000);
-        totalRuntime += runtime;
-        crawlStartTime = null;
-        updateCrawlerStats();
-        console.log('Crawler cycle completed');
-      });
-    } catch (error) {
-      console.error('Error in crawler interval check:', error);
-    }
-  }, 1 * 60 * 1000); // Check every minute
+  totalRuntime += Math.floor((Date.now() - crawlStartTime) / 1000);
+  console.log('Crawler stopped');
 }
 
 /**

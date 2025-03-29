@@ -190,8 +190,6 @@ router.get('/download-db', (req, res) => {
     
     // Check if crawler is actively writing to the database
     if (crawlerStats.isRunning) {
-      // We could either prevent download or just warn the user
-      // Here we chose to warn with a header that will be checked by frontend
       res.setHeader('X-Crawler-Active', 'true');
     }
     
@@ -200,6 +198,7 @@ router.get('/download-db', (req, res) => {
       res.setHeader('Content-Type', 'application/octet-stream');
       res.setHeader('Content-Disposition', 'attachment; filename=worldend_archive.db');
       res.setHeader('Content-Length', fileSizeInBytes);
+      res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
       return res.end();
     }
     
@@ -217,14 +216,18 @@ router.get('/download-db', (req, res) => {
     res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('Content-Disposition', 'attachment; filename=worldend_archive.db');
     res.setHeader('Content-Length', fileSizeInBytes);
+    res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
+    res.setHeader('Transfer-Encoding', 'chunked');
     
-    // Create read stream
-    const fileStream = fs.createReadStream(dbPath);
+    // Create read stream with high water mark for better performance
+    const fileStream = fs.createReadStream(dbPath, {
+      highWaterMark: 64 * 1024 // 64KB chunks for better performance
+    });
     
     // Handle potential errors
     fileStream.on('error', (error) => {
       isDbDownloading = false; // Reset flag
-      console.error('Database download error:', error);
+     
       if (!res.headersSent) {
         res.status(500).json({ error: 'Error streaming database file' });
       } else {
@@ -282,7 +285,9 @@ router.get('/crawler-stats', async (req, res) => {
       processedUrls: 0,
       crawlSpeed: 0,
       successRate: 100,
-      lastProcessedUrl: null
+      lastProcessedUrl: null,
+      infiniteMode: process.env.INFINITE_CRAWL === 'true',
+      maxDbSize: (parseInt(process.env.MAX_DB_SIZE_MB) || 8192) * 1024 * 1024
     };
     
     // Combine with actual crawlerStats, using defaults for missing values
@@ -342,12 +347,7 @@ router.get('/crawler-stats', async (req, res) => {
     
     // Format stats to include both database info and crawler status
     const stats = {
-      crawler: {
-        ...currentCrawlerStats,
-        runtime: currentCrawlerStats.startTime ? 
-          Math.floor((Date.now() - currentCrawlerStats.startTime) / 1000) + currentCrawlerStats.totalRuntime : 
-          currentCrawlerStats.totalRuntime
-      },
+      crawler: currentCrawlerStats,
       database: {
         exists: dbFileExists,
         fileSize: formatSize(fileSizeInBytes),
@@ -379,7 +379,9 @@ router.get('/crawler-stats', async (req, res) => {
         processedUrls: 0,
         crawlSpeed: 0,
         successRate: 100,
-        lastProcessedUrl: null
+        lastProcessedUrl: null,
+        infiniteMode: process.env.INFINITE_CRAWL === 'true',
+        maxDbSize: (parseInt(process.env.MAX_DB_SIZE_MB) || 8192) * 1024 * 1024
       },
       database: {
         exists: false,
