@@ -18,6 +18,18 @@
   <i>In a world of fragile infrastructure and ephemeral data, what knowledge would you save?</i>
 </p>
 
+## 📊 Archive Network Status
+
+<div align="center">
+
+  ![Hidden Devices](https://img.shields.io/badge/Hidden%20Devices-0-orange)
+
+  Secure flash drives containing WorldEndArchive have been hidden in various locations worldwide.
+  
+  [View all device locations](./locations.md) | [Register a new device](https://forms.gle/SJ9AUYV5p3ypvmXw8)
+  
+</div>
+
 ## 📋 Table of Contents
 
 - [Overview](#-overview)
