@@ -22,9 +22,9 @@ const { classifyContent } = require('./classifier');
 const CONFIG = {
   // Crawling parameters
   maxDepth: 3,                    // Maximum depth to crawl
-  concurrentRequests: 5,          // Number of concurrent requests
+  concurrentRequests: 15,          // Number of concurrent requests
   requestTimeout: 10000,          // Request timeout in ms
-  requestDelay: 500,              // Delay between batches in ms
+  requestDelay: 100,              // Delay between batches in ms
   respectRobotsTxt: true,         // Whether to respect robots.txt
   humanuserAgents: [
     // Chrome
@@ -557,14 +557,14 @@ async function startCrawler(seedUrls, callbacks = {}) {
       onQueueUpdate(queueSize);
       
       // If queue is nearly empty, reload seed URLs
-      if (queueSize < 5) {
-        if (emptyBatchCount > 5 && !additionalSeedsUsed) {
-          console.log("Queue is nearly empty. Adding additional seed URLs to continue crawling...");
+      if (queueSize < 10) {
+        if (emptyBatchCount > 2 && !additionalSeedsUsed) {
+          console.log("Queue is getting low. Adding additional seed URLs to continue crawling...");
           await addSeedUrlsToQueue(additionalSeeds);
           additionalSeedsUsed = true;
           emptyBatchCount = 0;
-        } else if (emptyBatchCount > 10) {
-          console.log("Queue is nearly empty. Reloading original seed URLs to continue crawling...");
+        } else if (emptyBatchCount > 5) {
+          console.log("Queue is getting low. Reloading original seed URLs to continue crawling...");
           await addSeedUrlsToQueue(originalSeeds);
           emptyBatchCount = 0;
         }
@@ -579,14 +579,14 @@ async function startCrawler(seedUrls, callbacks = {}) {
       emptyBatchCount++;
       console.log(`No URLs processed in this batch. Empty batch count: ${emptyBatchCount}`);
       
-      // Wait longer between empty batches to allow for database updates
-      await new Promise(resolve => setTimeout(resolve, CONFIG.requestDelay * 3));
+      // Wait shorter time between empty batches
+      await new Promise(resolve => setTimeout(resolve, CONFIG.requestDelay));
     } else {
       emptyBatchCount = 0;
     }
     
-    // Small delay between batches
-    await new Promise(resolve => setTimeout(resolve, CONFIG.requestDelay));
+    // Minimal delay between batches
+    await new Promise(resolve => setTimeout(resolve, 50));
   }
   
   console.log('Crawler finished');
