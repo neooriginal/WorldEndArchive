@@ -3,2105 +3,796 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WorldEndArchive - Apocalypse Mode</title>
+  <title>WorldEndArchive - Standalone Reader</title>
   <style>
     :root {
-      --bg-color: #0c0c0c;
+      --primary-bg: #0c0c0c;
+      --secondary-bg: #151515;
       --text-color: #33ff33;
-      --accent-color: #ff5733;
-      --header-color: #ff8c33;
-      --border-color: #444;
-      --panel-bg: rgba(0, 20, 0, 0.7);
+      --highlight-color: #ff8c33;
+      --border-color: rgba(51, 255, 51, 0.3);
+      --item-hover: rgba(51, 255, 51, 0.1);
     }
     
     body {
-      font-family: monospace, 'Courier New', Courier;
-      background-color: var(--bg-color);
+      font-family: monospace;
+      background-color: var(--primary-bg);
       color: var(--text-color);
       margin: 0;
       padding: 0;
       line-height: 1.6;
+      overflow-x: hidden;
+      min-height: 100vh;
+    }
+    
+    #app {
       display: flex;
       flex-direction: column;
       min-height: 100vh;
-      max-width: 100%;
-      overflow-x: hidden;
+    }
+
+    header {
+      background-color: var(--secondary-bg);
+      padding: 1.5rem;
+      border-bottom: 1px solid var(--border-color);
+      text-align: center;
     }
     
-    .crt-effect {
+    .title {
+      font-size: 2rem;
+      color: var(--highlight-color);
+      margin: 0 0 1rem 0;
+      text-shadow: 0 0 10px rgba(255, 140, 51, 0.5);
+    }
+    
+    .subtitle {
+      font-size: 1rem;
+      color: var(--text-color);
+      margin: 0;
+    }
+
+    .main-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 2rem;
+      max-width: 1200px;
+      margin: 0 auto;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    
+    .file-upload {
+      margin-bottom: 2rem;
+      text-align: center;
+    }
+    
+    .hidden {
+      display: none;
+    }
+    
+    .file-upload-label {
+      display: inline-block;
+      padding: 0.8rem 1.5rem;
+      border: 1px solid var(--text-color);
+      border-radius: 3px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    
+    .file-upload-label:hover {
+      background-color: rgba(51, 255, 51, 0.1);
+    }
+    
+    .search-container {
+      margin-bottom: 2rem;
+    }
+    
+    .search-box {
+      display: flex;
+      margin-bottom: 1rem;
+    }
+    
+    .search-input {
+      flex: 1;
+      background-color: var(--secondary-bg);
+      border: 1px solid var(--border-color);
+      padding: 0.8rem;
+      color: var(--text-color);
+      font-family: monospace;
+      font-size: 1rem;
+    }
+    
+    .search-button {
+      background-color: var(--secondary-bg);
+      border: 1px solid var(--text-color);
+      color: var(--text-color);
+      padding: 0.8rem 1.5rem;
+      margin-left: 0.5rem;
+      font-family: monospace;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    
+    .search-button:hover {
+      background-color: var(--item-hover);
+    }
+    
+    .topic-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    
+    .topic-filter {
+      padding: 0.4rem 0.8rem;
+      border: 1px solid var(--border-color);
+      border-radius: 3px;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    
+    .topic-filter:hover {
+      background-color: var(--item-hover);
+    }
+    
+    .topic-filter.active {
+      background-color: var(--text-color);
+      color: var(--primary-bg);
+    }
+    
+    .results-container {
+      flex: 1;
+    }
+    
+    .result-item {
+      padding: 1rem;
+      border: 1px solid var(--border-color);
+      margin-bottom: 1rem;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    
+    .result-item:hover {
+      background-color: var(--item-hover);
+    }
+    
+    .result-title {
+      font-size: 1.2rem;
+      color: var(--highlight-color);
+      margin: 0 0 0.5rem 0;
+    }
+    
+    .result-url {
+      font-size: 0.9rem;
+      color: rgba(51, 255, 51, 0.7);
+      margin-bottom: 0.5rem;
+      word-break: break-all;
+    }
+    
+    .result-description {
+      font-size: 0.9rem;
+      color: rgba(255, 255, 255, 0.7);
+      margin-bottom: 0.5rem;
+      line-height: 1.4;
+    }
+    
+    .result-date {
+      font-size: 0.8rem;
+      color: rgba(51, 255, 51, 0.5);
+      margin-bottom: 0.5rem;
+    }
+    
+    .result-topics {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+    
+    .result-topic {
+      font-size: 0.8rem;
+      padding: 0.2rem 0.5rem;
+      border: 1px solid var(--border-color);
+      border-radius: 3px;
+    }
+    
+    .content-viewer {
       position: fixed;
       top: 0;
       left: 0;
       width: 100%;
       height: 100%;
-      background: linear-gradient(rgba(10, 20, 10, 0.1) 50%, rgba(0, 0, 0, 0.2) 50%);
-      background-size: 100% 4px;
-      z-index: 100;
-      pointer-events: none;
-      opacity: 0.15;
-    }
-    
-    .crt-lines:before {
-      content: " ";
-      display: block;
-      position: fixed;
-      top: 0;
-      left: 0;
-      bottom: 0;
-      right: 0;
-      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
-      z-index: 100;
-      background-size: 100% 2px, 3px 100%;
-      pointer-events: none;
-    }
-    
-    .app-container {
-      width: 90%;
-      max-width: 1200px;
-      margin: 20px auto;
-      display: flex;
+      background-color: var(--primary-bg);
+      z-index: 1000;
+      display: none;
       flex-direction: column;
-      flex: 1;
-      position: relative;
-      z-index: 1;
-    }
-    
-    header {
-      text-align: center;
-      padding: 20px;
-      border-bottom: 1px solid var(--border-color);
-      margin-bottom: 20px;
-    }
-    
-    h1 {
-      color: var(--header-color);
-      font-size: 2.5em;
-      margin-bottom: 10px;
-      text-transform: uppercase;
-      text-shadow: 0 0 10px rgba(255, 140, 51, 0.5);
-    }
-    
-    h2 {
-      color: var(--accent-color);
-      font-size: 1.5em;
-      margin-top: 0;
-      border-bottom: 1px solid var(--border-color);
-      padding-bottom: 5px;
-    }
-    
-    .db-selection {
-      background-color: var(--panel-bg);
-      padding: 20px;
-      border-radius: 5px;
-      box-shadow: 0 0 15px rgba(0, 30, 0, 0.8);
-      margin-bottom: 20px;
-      border: 1px solid var(--border-color);
-    }
-    
-    .search-panel {
-      background-color: var(--panel-bg);
-      padding: 20px;
-      border-radius: 5px;
-      box-shadow: 0 0 15px rgba(0, 30, 0, 0.8);
-      margin-bottom: 20px;
-      border: 1px solid var(--border-color);
-      display: none;
-    }
-    
-    .results-panel {
-      background-color: var(--panel-bg);
-      padding: 20px;
-      border-radius: 5px;
-      box-shadow: 0 0 15px rgba(0, 30, 0, 0.8);
-      margin-bottom: 20px;
-      border: 1px solid var(--border-color);
-      flex: 1;
-      display: none;
-      overflow-y: auto;
-      max-height: 60vh;
-    }
-    
-    .content-panel {
-      background-color: var(--panel-bg);
-      padding: 20px;
-      border-radius: 5px;
-      box-shadow: 0 0 15px rgba(0, 30, 0, 0.8);
-      margin-bottom: 20px;
-      border: 1px solid var(--border-color);
-      display: none;
-      overflow-y: auto;
-      max-height: 70vh;
-    }
-    
-    .status-bar {
-      background-color: var(--panel-bg);
-      padding: 10px;
-      border-radius: 5px;
-      box-shadow: 0 0 15px rgba(0, 30, 0, 0.8);
-      margin-top: auto;
-      font-size: 0.9em;
-      border: 1px solid var(--border-color);
-    }
-    
-    button, input[type="file"], select {
-      background-color: #0c1c0c;
-      color: var(--text-color);
-      border: 1px solid var(--border-color);
-      padding: 8px 15px;
-      margin: 5px 0;
-      border-radius: 3px;
-      font-family: monospace;
-      cursor: pointer;
-      transition: all 0.3s;
-    }
-    
-    button:hover {
-      background-color: #1c2c1c;
-      box-shadow: 0 0 5px var(--text-color);
-    }
-    
-    input[type="text"], input[type="search"] {
-      background-color: #0c1c0c;
-      color: var(--text-color);
-      border: 1px solid var(--border-color);
-      padding: 8px 15px;
-      margin: 5px 0;
-      border-radius: 3px;
-      font-family: monospace;
-      width: 100%;
-    }
-    
-    .loader {
-      border: 5px solid var(--border-color);
-      border-top: 5px solid var(--header-color);
-      border-radius: 50%;
-      width: 40px;
-      height: 40px;
-      animation: spin 1s linear infinite;
-      margin: 20px auto;
-      display: none;
-    }
-    
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-    
-    .result-item {
-      padding: 10px;
-      margin-bottom: 10px;
-      border: 1px solid var(--border-color);
-      border-radius: 3px;
-      background-color: rgba(0, 0, 0, 0.2);
-      cursor: pointer;
-      transition: all 0.3s;
-      position: relative;
       overflow: hidden;
     }
     
-    .result-item:hover {
-      background-color: rgba(0, 50, 0, 0.3);
-      border-color: var(--accent-color);
-      transform: translateY(-2px);
-      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    .content-header {
+      background-color: var(--secondary-bg);
+      padding: 1rem;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
     
-    .result-item:hover::after {
-      content: "Click to view →";
-      position: absolute;
-      right: 10px;
-      bottom: 10px;
-      background-color: var(--accent-color);
-      color: var(--bg-color);
-      padding: 2px 8px;
-      border-radius: 3px;
-      font-size: 0.8em;
-      opacity: 0.9;
-    }
-    
-    .result-item:active {
-      transform: translateY(0);
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-      background-color: rgba(0, 70, 0, 0.4);
-    }
-    
-    .result-title {
-      color: var(--accent-color);
-      font-weight: bold;
-      font-size: 1.1em;
-      margin-bottom: 5px;
-    }
-    
-    .result-url {
-      font-size: 0.8em;
-      color: #999;
+    .content-title {
+      font-size: 1.2rem;
+      color: var(--highlight-color);
+      margin: 0;
+      flex: 1;
       word-break: break-all;
     }
     
-    .topic-tag {
-      display: inline-block;
-      background-color: rgba(51, 255, 51, 0.2);
+    .close-button {
+      background: transparent;
+      border: 1px solid var(--text-color);
       color: var(--text-color);
-      padding: 2px 6px;
-      margin: 2px;
-      border-radius: 3px;
-      font-size: 0.8em;
+      padding: 0.4rem 0.8rem;
+      cursor: pointer;
+      margin-left: 1rem;
     }
     
-    .db-info {
-      font-size: 0.9em;
-      margin-top: 10px;
-      display: none;
+    .content-body {
+      flex: 1;
+      padding: 1rem;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+      white-space: pre-wrap;
     }
     
-    .info-item {
-      display: flex;
-      justify-content: space-between;
-      border-bottom: 1px dashed var(--border-color);
-      padding: 3px 0;
+    .content-iframe {
+      flex: 1;
+      border: none;
+      width: 100%;
+      height: 100%;
+      background-color: white;
     }
     
-    .back-btn {
-      margin-bottom: 10px;
-    }
-    
-    #contentView {
-      background-color: #f8f8f8;
-      color: #333;
-      padding: 20px;
-      border-radius: 5px;
-      max-width: 100%;
-      overflow-x: auto;
-    }
-    
-    #topicsFilter {
-      margin: 10px 0;
-    }
-    
-    footer {
-      text-align: center;
-      padding: 20px;
-      font-size: 0.8em;
-      margin-top: 20px;
+    .stats-container {
+      margin-top: 2rem;
       border-top: 1px solid var(--border-color);
+      padding-top: 1rem;
     }
     
-    .search-options {
-      display: flex;
-      gap: 10px;
-      margin: 10px 0;
+    .stats-title {
+      font-size: 1.2rem;
+      color: var(--highlight-color);
+      margin-bottom: 1rem;
     }
     
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 1rem;
+    }
+    
+    .stat-box {
+      border: 1px solid var(--border-color);
+      padding: 1rem;
+    }
+    
+    .stat-label {
+      font-size: 0.9rem;
+      color: rgba(51, 255, 51, 0.7);
+      margin-bottom: 0.5rem;
+    }
+    
+    .stat-value {
+      font-size: 1.2rem;
+      color: var(--highlight-color);
+    }
+    
+    /* Loading animation */
+    .loading {
+      text-align: center;
+      padding: 2rem;
+    }
+    
+    .loading:after {
+      content: '.';
+      animation: dots 1.5s steps(5, end) infinite;
+    }
+    
+    @keyframes dots {
+      0%, 20% { color: rgba(0,0,0,0); text-shadow: .25em 0 0 rgba(0,0,0,0), .5em 0 0 rgba(0,0,0,0); }
+      40% { color: var(--text-color); text-shadow: .25em 0 0 rgba(0,0,0,0), .5em 0 0 rgba(0,0,0,0); }
+      60% { text-shadow: .25em 0 0 var(--text-color), .5em 0 0 rgba(0,0,0,0); }
+      80%, 100% { text-shadow: .25em 0 0 var(--text-color), .5em 0 0 var(--text-color); }
+    }
+    
+    /* CRT effect */
+    body::before {
+      content: "";
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(to bottom, rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
+      background-size: 100% 4px;
+      z-index: 2000;
+      pointer-events: none;
+      opacity: 0.15;
+    }
+
+    body::after {
+      content: "";
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle, transparent 50%, black 150%);
+      z-index: 2001;
+      pointer-events: none;
+      opacity: 0.4;
+    }
+    
+    /* Mobile responsiveness */
     @media (max-width: 768px) {
-      .app-container {
-        width: 95%;
+      .main-content {
+        padding: 1rem;
       }
       
-      .search-options {
-        flex-direction: column;
+      .stats-grid {
+        grid-template-columns: 1fr;
       }
-    }
-    
-    .wisdom-container {
-      margin-top: 20px;
-      padding: 15px;
-      border: 1px solid var(--border-color);
-      border-radius: 5px;
-      background-color: rgba(0, 0, 0, 0.3);
-    }
-    
-    .wisdom-container h3 {
-      color: var(--header-color);
-      margin-top: 0;
-      font-size: 1.2em;
-      border-bottom: 1px dashed var(--border-color);
-      padding-bottom: 5px;
-    }
-    
-    .quote {
-      font-style: italic;
-      padding: 10px 5px;
-      margin: 10px 0;
-      border-left: 3px solid var(--accent-color);
-      padding-left: 15px;
-    }
-    
-    .quote-author {
-      display: block;
-      text-align: right;
-      font-size: 0.9em;
-      color: #888;
-      margin-top: 5px;
-    }
-    
-    .quote-btn {
-      background-color: rgba(30, 60, 30, 0.5);
-      font-size: 0.8em;
-      padding: 5px 10px;
-    }
-    
-    .topics-filter-container {
-      margin: 15px 0;
-    }
-    
-    .topics-checkbox-container {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 8px;
-      max-height: 150px;
-      overflow-y: auto;
-      padding: 5px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-    }
-    
-    .topic-filter-item {
-      display: flex;
-      align-items: center;
-      background-color: #f5f5f5;
-      padding: 3px 8px;
-      border-radius: 4px;
-      font-size: 14px;
-    }
-    
-    .topic-filter-item input {
-      margin-right: 5px;
     }
   </style>
 </head>
 <body>
-  <div class="crt-effect"></div>
-  <div class="crt-lines"></div>
-  
-  <div class="app-container">
+  <div id="app">
     <header>
-      <h1>WorldEndArchive</h1>
-      <p>Apocalypse Mode - Standalone Knowledge Retrieval</p>
+      <h1 class="title">WorldEndArchive</h1>
+      <p class="subtitle">Standalone Knowledge Retrieval System</p>
     </header>
     
-    <div class="db-selection" id="dbSelector">
-      <h2>Load Database</h2>
-      <p>Select your WorldEndArchive database file (.db):</p>
-      <input type="file" id="dbFile" accept=".db" disabled>
-      <div class="loader" id="dbLoader"></div>
-      <div class="db-info" id="dbInfo">
-        <div class="info-item">
-          <span>Total Pages:</span>
-          <span id="totalPages">0</span>
+    <div class="main-content">
+      <div class="file-upload">
+        <label for="db-file" class="file-upload-label">
+          <span id="file-upload-text">Load Archive File (.json)</span>
+        </label>
+        <input type="file" id="db-file" class="hidden" accept=".json">
+      </div>
+      
+      <div class="search-container hidden" id="search-container">
+        <div class="search-box">
+          <input type="text" class="search-input" id="search-input" placeholder="Search for knowledge...">
+          <button class="search-button" id="search-button">Search</button>
         </div>
-        <div class="info-item">
-          <span>Topics:</span>
-          <span id="topicsList">-</span>
-        </div>
-        <div class="info-item">
-          <span>Database Size:</span>
-          <span id="dbSize">0 MB</span>
-        </div>
-        <div class="info-item">
-          <span>Last Updated:</span>
-          <span id="lastUpdate">-</span>
+        
+        <div class="topic-filters" id="topic-filters">
+          <!-- Topics will be added dynamically -->
         </div>
       </div>
       
-      <div class="wisdom-container">
-        <h3>Wisdom For Dark Times</h3>
-        <div class="quote" id="quoteDisplay">
-          <!-- Quotes will be displayed here -->
+      <div class="results-container" id="results-container">
+        <div id="initial-message">
+          <h2>Welcome to WorldEndArchive</h2>
+          <p>Please load a WorldEndArchive database file to begin.</p>
+          <p>If you don't have one, you can create one using the crawler application.</p>
         </div>
-        <button id="newQuoteBtn" class="quote-btn">New Quote</button>
+        <div id="results-list"></div>
+        <div id="loading-indicator" class="loading hidden">Loading results</div>
       </div>
-    </div>
-    
-    <div class="search-panel" id="searchPanel" style="display: none;">
-      <h2>Search Archive</h2>
-      <div>
-        <input type="text" id="searchInput" placeholder="Search for pages...">
-      </div>
-      <div class="topics-filter-container">
-        <label>Filter by topics:</label>
-        <div id="topicsFilterContainer" class="topics-checkbox-container">
-          <!-- Topics will be populated from the database as checkboxes -->
+      
+      <div class="stats-container hidden" id="stats-container">
+        <h2 class="stats-title">Archive Statistics</h2>
+        <div class="stats-grid" id="stats-grid">
+          <!-- Stats will be added dynamically -->
         </div>
       </div>
-      <div>
-        <button id="searchBtn">Search</button>
-        <button id="clearBtn">Clear</button>
+    </div>
+    
+    <div class="content-viewer" id="content-viewer">
+      <div class="content-header">
+        <h3 class="content-title" id="content-title"></h3>
+        <button class="close-button" id="close-button">Close</button>
       </div>
-    </div>
-    
-    <div class="results-panel" id="resultsPanel">
-      <h2>Search Results</h2>
-      <div id="resultsCount"></div>
-      <div id="resultsList"></div>
-    </div>
-    
-    <div class="content-panel" id="contentPanel">
-      <button class="back-btn" id="backBtn">← Back to Results</button>
-      <h2 id="contentTitle">Content</h2>
-      <div id="contentMeta"></div>
-      <div id="contentView"></div>
-    </div>
-    
-    <div class="status-bar" id="statusBar">
-      Ready. Load a database file to start.
+      <iframe class="content-iframe" id="content-iframe"></iframe>
     </div>
   </div>
   
-  <footer>
-    <p>WorldEndArchive - Offline Knowledge Preservation System</p>
-    <p>GitHub: <a href="https://github.com/neooriginal/WorldEndArchive" style="color: var(--text-color);">WorldEndArchive</a></p>
-  </footer>
-  
-  <!-- Include SQL.js from CDN -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
   <script>
-    // Initialize variables
-    let db = null;
-    let dbInfo = {};
-    let currentSearchResults = [];
-    let availableTopics = [];
-    let navigationHistory = [];
-    let currentHistoryPosition = -1;
+    // Global state
+    const state = {
+      database: null,
+      activeTopics: [],
+      searchQuery: '',
+      currentPage: 1,
+      resultsPerPage: 20
+    };
     
-    // DOM elements
-    const dbSelector = document.getElementById('dbSelector');
-    const dbFile = document.getElementById('dbFile');
-    const dbLoader = document.getElementById('dbLoader');
-    const dbInfoDiv = document.getElementById('dbInfo');
-    const searchPanel = document.getElementById('searchPanel');
-    const resultsPanel = document.getElementById('resultsPanel');
-    const contentPanel = document.getElementById('contentPanel');
-    const searchInput = document.getElementById('searchInput');
-    const searchBtn = document.getElementById('searchBtn');
-    const clearBtn = document.getElementById('clearBtn');
-    const resultsList = document.getElementById('resultsList');
-    const resultsCount = document.getElementById('resultsCount');
-    const statusBar = document.getElementById('statusBar');
-    const topicsFilterContainer = document.getElementById('topicsFilterContainer');
-    const contentTitle = document.getElementById('contentTitle');
-    const contentMeta = document.getElementById('contentMeta');
-    const contentView = document.getElementById('contentView');
-    const backBtn = document.getElementById('backBtn');
+    // DOM Elements
+    const elements = {
+      fileInput: document.getElementById('db-file'),
+      fileUploadText: document.getElementById('file-upload-text'),
+      searchContainer: document.getElementById('search-container'),
+      searchInput: document.getElementById('search-input'),
+      searchButton: document.getElementById('search-button'),
+      topicFilters: document.getElementById('topic-filters'),
+      resultsContainer: document.getElementById('results-container'),
+      initialMessage: document.getElementById('initial-message'),
+      resultsList: document.getElementById('results-list'),
+      loadingIndicator: document.getElementById('loading-indicator'),
+      statsContainer: document.getElementById('stats-container'),
+      statsGrid: document.getElementById('stats-grid'),
+      contentViewer: document.getElementById('content-viewer'),
+      contentTitle: document.getElementById('content-title'),
+      contentIframe: document.getElementById('content-iframe'),
+      closeButton: document.getElementById('close-button')
+    };
     
-    // Initialize SQL.js
-    document.addEventListener('DOMContentLoaded', async function() {
-      statusBar.textContent = "Initializing SQL.js...";
-      
+    // Event Listeners
+    elements.fileInput.addEventListener('change', handleFileUpload);
+    elements.searchButton.addEventListener('click', performSearch);
+    elements.searchInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') performSearch();
+    });
+    elements.closeButton.addEventListener('click', closeContentViewer);
+    
+    // Topic filters will be set up dynamically
+    
+    // File upload handler
+    async function handleFileUpload(e) {
       try {
-        // Initialize SQL.js
-        const SQL = await initSqlJs({
-          // Use relative path for wasm file when possible, fallback to CDN
-          locateFile: file => 
-            'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.wasm' // CDN fallback
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        elements.fileUploadText.textContent = `Loading ${file.name}...`;
+        elements.loadingIndicator.classList.remove('hidden');
+        elements.initialMessage.classList.add('hidden');
+        
+        const text = await readFileAsText(file);
+        
+        try {
+          state.database = JSON.parse(text);
+          console.log('Database loaded successfully');
+          
+          elements.fileUploadText.textContent = `${file.name} (loaded)`;
+          elements.searchContainer.classList.remove('hidden');
+          elements.statsContainer.classList.remove('hidden');
+          
+          // Setup topics
+          setupTopicFilters();
+          
+          // Show stats
+          updateStats();
+          
+          // Run initial search
+          performSearch();
+        } catch (parseError) {
+          console.error('Error parsing JSON:', parseError);
+          elements.fileUploadText.textContent = 'Error: Invalid JSON file';
+          elements.initialMessage.classList.remove('hidden');
+          elements.initialMessage.innerHTML = '<h2>Error</h2><p>The selected file is not a valid WorldEndArchive JSON database.</p>';
+        }
+      } catch (error) {
+        console.error('Error handling file upload:', error);
+        elements.fileUploadText.textContent = 'Error loading file';
+      } finally {
+        elements.loadingIndicator.classList.add('hidden');
+      }
+    }
+    
+    // Helper function to read file as text
+    function readFileAsText(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (event) => resolve(event.target.result);
+        reader.onerror = reject;
+        reader.readAsText(file);
+      });
+    }
+    
+    // Setup topic filters based on available topics
+    function setupTopicFilters() {
+      // Extract unique topics
+      const topicSet = new Set();
+      
+      if (state.database) {
+        // Check if we have direct topics property in pages
+        if (state.database.pages && state.database.pages.some(p => p.topics)) {
+          // Extract from comma-separated topics
+          state.database.pages.forEach(page => {
+            if (page.topics) {
+              const topicList = page.topics.split(',').map(t => t.trim());
+              topicList.forEach(topic => {
+                if (topic) topicSet.add(topic);
+              });
+            }
+          });
+        }
+        // Fallback to page_topics array if needed
+        else if (state.database.page_topics) {
+          state.database.page_topics.forEach(topic => {
+            topicSet.add(topic.topic);
+          });
+        }
+      }
+      
+      // Clear existing filters
+      elements.topicFilters.innerHTML = '';
+      
+      // Add filter for each topic
+      Array.from(topicSet).sort().forEach(topic => {
+        const topicElement = document.createElement('div');
+        topicElement.className = 'topic-filter';
+        topicElement.dataset.topic = topic;
+        topicElement.textContent = topic.charAt(0).toUpperCase() + topic.slice(1);
+        
+        topicElement.addEventListener('click', () => {
+          topicElement.classList.toggle('active');
+          
+          if (topicElement.classList.contains('active')) {
+            state.activeTopics.push(topic);
+          } else {
+            state.activeTopics = state.activeTopics.filter(t => t !== topic);
+          }
+          
+          performSearch();
         });
         
-        // Store SQL globally for later use
-        window.SQL = SQL;
-        
-        // Enable the database file input once SQL is ready
-        dbFile.disabled = false;
-        
-        // Display initial quote
-        displayRandomQuote();
-        
-        // Set up quote button handler
-        const newQuoteBtn = document.getElementById('newQuoteBtn');
-        if (newQuoteBtn) {
-          newQuoteBtn.addEventListener('click', displayRandomQuote);
-        }
-        
-        statusBar.textContent = "Ready. Load a database file to start.";
-      } catch (err) {
-        statusBar.textContent = "Error loading SQL.js: " + err.message;
-        console.error("SQL loading error:", err);
-      }
-    });
-    
-    // Helper function to check if data is binary or text
-    function isBinaryContent(buffer) {
-      // Check a sample of the content
-      const sample = buffer.slice(0, Math.min(1000, buffer.length));
-      let textCount = 0;
-      let binaryCount = 0;
-      
-      for (let i = 0; i < sample.length; i++) {
-        const byte = sample[i];
-        // Count text vs binary characters
-        if ((byte >= 32 && byte <= 126) || // Printable ASCII
-            byte === 9 || byte === 10 || byte === 13) { // Tab, LF, CR
-          textCount++;
-        } else {
-          binaryCount++;
-        }
-      }
-      
-      // If more than 10% is binary, consider it binary content
-      return (binaryCount / sample.length) > 0.1;
-    }
-    
-    // Handle database file selection
-    dbFile.addEventListener('change', function(e) {
-      const file = e.target.files[0];
-      if (!file) return;
-      
-      loadDatabase(file);
-    });
-    
-    async function loadDatabase(file) {
-      try {
-        dbLoader.style.display = 'block';
-        statusBar.textContent = "Loading database...";
-        
-        // Reset state
-        if (db) {
-          db.close();
-          db = null;
-        }
-        dbInfo = {};
-        currentSearchResults = [];
-        availableTopics = [];
-        
-        // Read the file
-        const reader = new FileReader();
-        
-        reader.onload = async function() {
-          try {
-            // Initialize database from the file
-            const uInt8Array = new Uint8Array(reader.result);
-            db = new SQL.Database(uInt8Array);
-            
-            // Load database info
-            getDbInfo();
-            
-            // Display database info
-            displayDbInfo();
-            
-            // Load available topics
-            loadTopics();
-            
-            // Show search panel
-            searchPanel.style.display = 'block';
-            dbInfoDiv.style.display = 'block';
-            
-            statusBar.textContent = `Database loaded. ${dbInfo.totalPages} pages available.`;
-          } catch (err) {
-            statusBar.textContent = "Error processing database: " + err.message;
-            console.error("Database processing error:", err);
-          } finally {
-            dbLoader.style.display = 'none';
-          }
-        };
-        
-        reader.onerror = function() {
-          statusBar.textContent = "Error reading file.";
-          dbLoader.style.display = 'none';
-        };
-        
-        reader.readAsArrayBuffer(file);
-      } catch (err) {
-        statusBar.textContent = "Error loading database: " + err.message;
-        dbLoader.style.display = 'none';
-        console.error(err);
-      }
-    }
-    
-    function getDbInfo() {
-      try {
-        // Get total pages
-        const totalPagesResult = db.exec("SELECT COUNT(*) as count FROM pages")[0];
-        const totalPages = totalPagesResult.values[0][0];
-        
-        // Get settings
-        const settingsResult = db.exec("SELECT key, value FROM settings");
-        const settings = {};
-        
-        if (settingsResult.length > 0) {
-          settingsResult[0].values.forEach(row => {
-            settings[row[0]] = row[1];
-          });
-        }
-        
-        dbInfo = {
-          totalPages: totalPages,
-          lastUpdated: settings.last_crawl_date || 'Unknown',
-          dbSizeMB: '(size unavailable in browser)',
-          settings: settings
-        };
-      } catch (err) {
-        console.error("Error getting DB info:", err);
-        dbInfo = {
-          totalPages: 0,
-          lastUpdated: 'Unknown',
-          dbSizeMB: 'Unknown',
-          settings: {}
-        };
-      }
-    }
-    
-    function displayDbInfo() {
-      document.getElementById('totalPages').textContent = dbInfo.totalPages;
-      document.getElementById('lastUpdate').textContent = formatDate(dbInfo.lastUpdated);
-      document.getElementById('dbSize').textContent = dbInfo.dbSizeMB;
-      
-      // Update topics list if available
-      if (availableTopics.length > 0) {
-        document.getElementById('topicsList').textContent = availableTopics.join(', ');
-      }
-    }
-    
-    function loadTopics() {
-      try {
-        // Get all unique topics
-        const topicsResult = db.exec("SELECT DISTINCT topic FROM page_topics ORDER BY topic");
-        
-        if (topicsResult.length > 0) {
-          availableTopics = topicsResult[0].values.map(row => row[0]);
-          
-          // Update topics list in the info panel
-          document.getElementById('topicsList').textContent = availableTopics.join(', ');
-          
-          // Populate topics filter with checkboxes
-          const topicsFilterContainer = document.getElementById('topicsFilterContainer');
-          topicsFilterContainer.innerHTML = '';
-          
-          availableTopics.forEach(topic => {
-            const topicItem = document.createElement('label');
-            topicItem.className = 'topic-filter-item';
-            
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.className = 'topic-filter';
-            checkbox.value = topic;
-            
-            const topicText = document.createTextNode(topic.charAt(0).toUpperCase() + topic.slice(1));
-            
-            topicItem.appendChild(checkbox);
-            topicItem.appendChild(topicText);
-            topicsFilterContainer.appendChild(topicItem);
-          });
-        }
-      } catch (err) {
-        console.error("Error loading topics:", err);
-      }
-    }
-    
-    // Search functionality
-    searchBtn.addEventListener('click', performSearch);
-    searchInput.addEventListener('keyup', function(e) {
-      if (e.key === 'Enter') {
-        performSearch();
-      }
-    });
-     
-    clearBtn.addEventListener('click', function() {
-      searchInput.value = '';
-      document.querySelectorAll('.topic-filter').forEach(cb => cb.checked = false);
-      resultsPanel.style.display = 'none';
-      contentPanel.style.display = 'none';
-      statusBar.textContent = `Database loaded. ${dbInfo.totalPages} pages available.`;
-    });
-
-    // Perform a search
-    function performSearch() {
-      if (!db) {
-        statusBar.textContent = "No database loaded.";
-        return;
-      }
-      
-      try {
-        // Get search parameters
-        const query = searchInput.value.trim();
-        const selectedTopics = [...document.querySelectorAll('.topic-filter:checked')].map(el => el.value);
-        
-        // Clear previous results
-        resultsList.innerHTML = '';
-        
-        // Show recent entries if no search criteria provided
-        if (!query && selectedTopics.length === 0) {
-          const recentSql = `
-            SELECT p.id, p.title, p.url, p.content_size, p.date_archived 
-            FROM pages p
-            ORDER BY p.date_archived DESC
-            LIMIT 50
-          `;
-          
-          const recentResults = db.exec(recentSql);
-          if (recentResults && recentResults.length > 0) {
-            displayResults(recentResults[0], "Showing 50 most recent entries");
-            return;
-          } else {
-            statusBar.textContent = "No entries found in database";
-            return;
-          }
-        }
-        
-        // Build SQL query
-        let sql = '';
-        let params = [];
-        
-        if (selectedTopics.length > 0 && query) {
-          // Search by both topics and query
-          sql = `
-            SELECT DISTINCT p.id, p.title, p.url, p.content_size, p.date_archived 
-            FROM pages p
-            JOIN page_topics pt ON p.id = pt.page_id
-            WHERE pt.topic IN (${selectedTopics.map(() => '?').join(',')})
-            AND (
-              p.title LIKE ? OR 
-              p.url LIKE ?
-            )
-            ORDER BY p.date_archived DESC
-            LIMIT 100
-          `;
-          params = [...selectedTopics, `%${query}%`, `%${query}%`];
-        } else if (selectedTopics.length > 0) {
-          // Search by topics only
-          sql = `
-            SELECT DISTINCT p.id, p.title, p.url, p.content_size, p.date_archived 
-            FROM pages p
-            JOIN page_topics pt ON p.id = pt.page_id
-            WHERE pt.topic IN (${selectedTopics.map(() => '?').join(',')})
-            GROUP BY p.id
-            ORDER BY p.date_archived DESC
-            LIMIT 100
-          `;
-          params = [...selectedTopics];
-        } else {
-          // Search by query only - more permissive search
-          const terms = query.split(/\s+/).filter(term => term.length > 1);
-          
-          if (terms.length > 1) {
-            // Multi-word search - search each term independently
-            const likeConditions = terms.map(() => '(p.title LIKE ? OR p.url LIKE ?)').join(' OR ');
-            sql = `
-              SELECT DISTINCT p.id, p.title, p.url, p.content_size, p.date_archived 
-              FROM pages p
-              WHERE ${likeConditions}
-              ORDER BY p.date_archived DESC
-              LIMIT 100
-            `;
-            // Create params for each term
-            params = [];
-            terms.forEach(term => {
-              params.push(`%${term}%`, `%${term}%`);
-            });
-          } else {
-            // Single term search
-            sql = `
-              SELECT DISTINCT p.id, p.title, p.url, p.content_size, p.date_archived 
-              FROM pages p
-              WHERE p.title LIKE ? OR p.url LIKE ?
-              ORDER BY p.date_archived DESC
-              LIMIT 100
-            `;
-            params = [`%${query}%`, `%${query}%`];
-          }
-        }
-        
-        // Execute search query with param binding
-        console.log("Executing search:", sql, params);
-        
-        let results;
-        try {
-          if (params.length > 0) {
-            // Correct parameter binding
-            const stmt = db.prepare(sql);
-            
-            // Bind parameters properly - SQL.js uses 1-based indexing
-            params.forEach((param, index) => {
-              stmt.bind(index + 1, param);
-            });
-            
-            // Execute the statement and collect results
-            results = [];
-            while (stmt.step()) {
-              results.push(stmt.getAsObject());
-            }
-            stmt.free();
-            
-            // Format results similar to db.exec() format
-            if (results.length > 0) {
-              const columns = Object.keys(results[0]);
-              const values = results.map(row => Object.values(row));
-              results = [{columns, values}];
-            }
-          } else {
-            results = db.exec(sql);
-          }
-          
-          if (results && results.length > 0) {
-            displayResults(results[0], `Search results for "${query || 'selected topics'}"`);
-          } else {
-            resultsList.innerHTML = `
-              <div class="no-results">
-                <h3>No results found</h3>
-                <p>Try different search terms or topic filters</p>
-              </div>
-            `;
-            statusBar.textContent = "No results found";
-            
-            // Show results panel
-            resultsPanel.style.display = 'block';
-            contentPanel.style.display = 'none';
-          }
-        } catch (err) {
-          console.error("SQL execution error:", err);
-          throw err; // Re-throw to be caught by the outer try-catch
-        }
-      } catch (err) {
-        console.error("Search error:", err);
-        statusBar.textContent = "Search error: " + err.message;
-        
-        resultsList.innerHTML = `
-          <div class="error">
-            <h3>Error during search</h3>
-            <p>${err.message}</p>
-            <pre>${err.stack}</pre>
-          </div>
-        `;
-        
-        // Show results panel
-        resultsPanel.style.display = 'block';
-        contentPanel.style.display = 'none';
-      }
-    }
-    
-    // Display results from a SQL.js query result
-    function displayResults(resultSet, statusMessage) {
-      // Store the column names to map indices to fields
-      const columns = resultSet.columns;
-      const idIndex = columns.indexOf('id');
-      const titleIndex = columns.indexOf('title');
-      const urlIndex = columns.indexOf('url');
-      const contentSizeIndex = columns.indexOf('content_size');
-      const dateArchivedIndex = columns.indexOf('date_archived');
-      
-      // Clear previous results first
-      resultsList.innerHTML = '';
-      
-      const resultData = resultSet.values.map(row => {
-        // Collect result fields using column indices
-        const id = row[idIndex];
-        const title = row[titleIndex] || '(No Title)';
-        const url = row[urlIndex] || '(No URL)';
-        const contentSize = row[contentSizeIndex] || 0;
-        const dateArchived = row[dateArchivedIndex] || null;
-        
-        // Get topics for this result
-        let topics = [];
-        try {
-          const topicsResult = db.exec(`SELECT topic FROM page_topics WHERE page_id = ${id}`);
-          if (topicsResult && topicsResult.length > 0) {
-            topics = topicsResult[0].values.map(t => t[0]);
-          }
-        } catch (e) {
-          console.error(`Error getting topics for result ${id}:`, e);
-        }
-        
-        return { id, title, url, topics, contentSize, dateArchived };
+        elements.topicFilters.appendChild(topicElement);
       });
+    }
+    
+    // Update stats display
+    function updateStats() {
+      if (!state.database) return;
       
-      // Store current results for back button
-      currentSearchResults = resultData;
-      
-      // Display results
-      resultData.forEach(result => {
-        const resultElement = document.createElement('div');
-        resultElement.className = 'result-item';
-        resultElement.dataset.resultId = result.id; // Store ID in data attribute
-        resultElement.innerHTML = `
-          <div class="result-title">${result.title || '(No Title)'}</div>
-          <div class="result-url">${result.url || '(No URL)'}</div>
-          <div>
-            ${result.topics.map(topic => `<span class="topic-tag">${topic}</span>`).join(' ')}
-          </div>
-          <div style="font-size: 0.8em; color: #777; margin-top: 5px;">
-            Size: ${formatSize(result.contentSize)}
-            ${result.dateArchived ? ` | Date: ${new Date(result.dateArchived).toLocaleString()}` : ''}
-          </div>
-        `;
-        
-        // Add to results
-        resultsList.appendChild(resultElement);
-      });
-      
-      // Add a separate event listener for the entire results list using event delegation
-      // This is more reliable than individual listeners
-      resultsList.onclick = function(event) {
-        // Find the closest parent result item
-        const resultItem = event.target.closest('.result-item');
-        if (resultItem) {
-          const id = resultItem.dataset.resultId;
-          console.log("Result item clicked, id:", id);
-          if (id) {
-            viewContent(parseInt(id, 10));
-          }
-        }
+      const stats = {
+        'Total Pages': state.database.pages ? state.database.pages.length : 0,
+        'Topics': state.database.page_topics ? new Set(state.database.page_topics.map(t => t.topic)).size : 0,
+        'Queue Size': state.database.crawl_queue ? state.database.crawl_queue.length : 0
       };
       
-      // Update status
-      statusBar.textContent = `${statusMessage} - Found ${resultData.length} ${resultData.length === 1 ? 'result' : 'results'}`;
+      // Add settings if available
+      if (state.database.settings) {
+        if (state.database.settings.total_size_raw) {
+          stats['Content Size'] = formatBytes(parseInt(state.database.settings.total_size_raw));
+        }
+        
+        if (state.database.settings.last_crawl_date) {
+          stats['Last Crawl'] = new Date(state.database.settings.last_crawl_date).toLocaleDateString();
+        }
+      }
       
-      // Show results panel
-      resultsPanel.style.display = 'block';
-      contentPanel.style.display = 'none';
+      // Clear existing stats
+      elements.statsGrid.innerHTML = '';
+      
+      // Add stat boxes
+      Object.entries(stats).forEach(([label, value]) => {
+        const statBox = document.createElement('div');
+        statBox.className = 'stat-box';
+        
+        const statLabel = document.createElement('div');
+        statLabel.className = 'stat-label';
+        statLabel.textContent = label;
+        
+        const statValue = document.createElement('div');
+        statValue.className = 'stat-value';
+        statValue.textContent = value;
+        
+        statBox.appendChild(statLabel);
+        statBox.appendChild(statValue);
+        elements.statsGrid.appendChild(statBox);
+      });
     }
     
-    // View content
-    function viewContent(id, fromNavigation = false) {
-      console.log(`Attempting to view content for ID: ${id}`);
+    // Format bytes to human readable format
+    function formatBytes(bytes, decimals = 2) {
+      if (bytes === 0) return '0 Bytes';
       
-      try {
-        // Save to navigation history if not already navigating from history
-        if (!fromNavigation) {
-          // If we're in the middle of a history chain, truncate future history
-          if (currentHistoryPosition >= 0 && currentHistoryPosition < navigationHistory.length - 1) {
-            navigationHistory = navigationHistory.slice(0, currentHistoryPosition + 1);
+      const k = 1024;
+      const dm = decimals < 0 ? 0 : decimals;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+      
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+    }
+    
+    // Perform search
+    function performSearch() {
+      if (!state.database || !state.database.pages) {
+        return;
+      }
+      
+      // Update search query
+      state.searchQuery = elements.searchInput.value.toLowerCase().trim();
+      
+      // Show loading
+      elements.loadingIndicator.classList.remove('hidden');
+      elements.resultsList.innerHTML = '';
+      
+      // Filter pages based on search query and topics
+      let results = state.database.pages;
+      
+      // Apply topic filters if any are active
+      if (state.activeTopics.length > 0) {
+        results = results.filter(page => {
+          // Check if the page has the selected topics
+          let pageTopics = [];
+          
+          // Handle both storage formats
+          if (page.topics) {
+            // New format with comma-separated list
+            pageTopics = page.topics.split(',').map(t => t.trim());
+          } else if (state.database.page_topics) {
+            // Old format with page_topics relation
+            pageTopics = state.database.page_topics
+              .filter(pt => pt.page_id === page.id)
+              .map(pt => pt.topic);
           }
           
-          // Add to history
-          navigationHistory.push(id);
-          currentHistoryPosition = navigationHistory.length - 1;
+          // Must have all selected topics
+          return state.activeTopics.every(topic => pageTopics.includes(topic));
+        });
+      }
+      
+      // Apply text search if query is provided
+      if (state.searchQuery) {
+        results = results.filter(page => {
+          // Check title and URL
+          const titleMatch = page.title && page.title.toLowerCase().includes(state.searchQuery);
+          const urlMatch = page.url && page.url.toLowerCase().includes(state.searchQuery);
+          const descMatch = page.description && page.description.toLowerCase().includes(state.searchQuery);
           
-          // Update navigation controls
-          updateNavigationControls();
-        }
+          return titleMatch || urlMatch || descMatch;
+        });
+      }
+      
+      // Sort by date (newest first)
+      results.sort((a, b) => {
+        return new Date(b.date_archived) - new Date(a.date_archived);
+      });
+      
+      // Display results
+      displayResults(results);
+    }
+    
+    // Display search results
+    function displayResults(results) {
+      // Hide loading
+      elements.loadingIndicator.classList.add('hidden');
+      
+      // Clear previous results
+      elements.resultsList.innerHTML = '';
+      
+      if (results.length === 0) {
+        elements.resultsList.innerHTML = '<div class="no-results">No results found</div>';
+        return;
+      }
+      
+      // Create result items
+      results.slice(0, state.resultsPerPage).forEach(page => {
+        const resultItem = document.createElement('div');
+        resultItem.className = 'result-item';
+        resultItem.dataset.id = page.id;
         
-        // Show content panel and loading indicator immediately
-        contentPanel.style.display = 'block';
-        resultsPanel.style.display = 'none';
+        const title = document.createElement('h3');
+        title.className = 'result-title';
+        title.textContent = page.title || 'Untitled';
         
-        // Show loading state
-        contentView.innerHTML = `
-          <div style="padding: 40px; text-align: center; background-color: #f8f8f8; border: 1px solid #ddd;">
-            <div class="loader" style="display: inline-block;"></div>
-            <p>Loading content...</p>
-          </div>
-        `;
+        const url = document.createElement('div');
+        url.className = 'result-url';
+        url.textContent = page.url;
         
-        // Check if database is loaded
-        if (!db) {
-          throw new Error("Database not loaded");
-        }
+        const description = document.createElement('div');
+        description.className = 'result-description';
+        description.textContent = page.description || '';
         
-        // Get page content with proper error handling
-        let contentResult;
-        try {
-          contentResult = db.exec(`SELECT compressed_content, title, url, content_size FROM pages WHERE id = ${id}`);
-          console.log("Content query executed, result:", contentResult);
-          
-          if (!contentResult || contentResult.length === 0 || contentResult[0].values.length === 0) {
-            throw new Error(`Content not found for ID ${id}`);
-          }
-        } catch (dbErr) {
-          console.error("Database error:", dbErr);
-          throw new Error(`Database error: ${dbErr.message}`);
-        }
+        const date = document.createElement('div');
+        date.className = 'result-date';
+        date.textContent = new Date(page.date_archived).toLocaleDateString();
         
-        const [content, title, url, contentSize] = contentResult[0].values[0];
-        console.log(`Found content for "${title || url}" (${contentSize || 0} bytes)`);
+        const topicsContainer = document.createElement('div');
+        topicsContainer.className = 'result-topics';
         
-        // Get topics for this page
-        let topics = [];
-        try {
-          const topicsResult = db.exec(`SELECT topic FROM page_topics WHERE page_id = ${id}`);
-          if (topicsResult && topicsResult.length > 0) {
-            topics = topicsResult[0].values.map(row => row[0]);
-          }
-          console.log("Topics found:", topics);
-        } catch (topicErr) {
-          console.warn("Error getting topics:", topicErr);
-          // Non-fatal error, continue without topics
-        }
-        
-        // Display the content metadata
-        contentTitle.textContent = title || url;
-        contentMeta.innerHTML = `
-          <div class="result-url">${url}</div>
-          <div style="margin-top: 10px; display: flex; justify-content: space-between; color: #666;">
-            <span>Topics: ${topics.join(', ')}</span>
-            <span>Size: ${formatSize(contentSize || (content ? content.length : 0))}</span>
-          </div>
-        `;
-        
-        // Update loading message
-        contentView.innerHTML = `
-          <div style="padding: 40px; text-align: center; background-color: #f8f8f8; border: 1px solid #ddd;">
-            <div class="loader" style="display: inline-block;"></div>
-            <p>Processing content...</p>
-          </div>
-        `;
-        
-        // Handle content display
-        if (content) {
-          console.log(`Processing ${content.length} bytes of content`);
-          
-          // Create a Uint8Array from the binary data
-          const contentBytes = new Uint8Array(content);
-          
-          // Check if this is binary content
-          if (isBinaryContent(contentBytes)) {
-            console.log("Detected binary content, not attempting text conversion");
-            const fallbackMessage = `[Binary content (${contentBytes.length} bytes) cannot be displayed as text]`;
-            displayContent(fallbackMessage);
-            statusBar.textContent = `Viewing binary content: ${title || url}`;
-            return;
-          }
-          
-          // Try to decode as text using different encodings
-          let textContent = null;
-          
-          for (const encoding of ['utf-8', 'iso-8859-1', 'windows-1252']) {
-            try {
-              const decoder = new TextDecoder(encoding);
-              const text = decoder.decode(contentBytes);
-              
-              // Basic check if it's readable text
-              if (text && text.length > 0) {
-                console.log(`Successfully decoded content as ${encoding}`);
-                textContent = text;
-                break;
-              }
-            } catch (e) {
-              console.log(`Error decoding with ${encoding}:`, e);
-            }
-          }
-          
-          // If we found text content, display it
-          if (textContent) {
-            displayContent(textContent);
-            statusBar.textContent = `Viewing: ${title || url}`;
-          } else {
-            // Fallback for binary content - create a simple message
-            const fallbackMessage = `[Binary content (${contentBytes.length} bytes) cannot be displayed as text]`;
-            displayContent(fallbackMessage);
-            statusBar.textContent = `Viewing binary content: ${title || url}`;
-          }
+        // Handle topics (either from direct property or from page_topics relation)
+        let pageTopics = [];
+        if (page.topics) {
+          // Direct topics property (comma-separated list)
+          pageTopics = page.topics.split(',').map(t => t.trim()).filter(t => t);
         } else {
-          console.log("No content data available");
-          // No content available
-          contentView.innerHTML = `
-            <div style="padding: 40px; text-align: center; background-color: #f8f8f8; border: 1px solid #ddd; margin-top: 20px;">
-              <h3>No Content Available</h3>
-              <p>This page exists in the database but has no content stored.</p>
-            </div>
-          `;
-          statusBar.textContent = `Viewing (no content): ${title || url}`;
-        }
-      } catch (err) {
-        console.error("Error in viewContent:", err);
-        statusBar.textContent = "Error retrieving content: " + err.message;
-        
-        // Always show the content panel even on error
-        contentPanel.style.display = 'block';
-        resultsPanel.style.display = 'none';
-        
-        // Display error message
-        contentTitle.textContent = "Error Loading Content";
-        contentMeta.innerHTML = `<div style="color: #cc0000;">Error: ${err.message}</div>`;
-        contentView.innerHTML = `
-          <div style="padding: 20px; background-color: #f8f8f8; border: 1px solid #ddd; text-align: center;">
-            <h3>Unable to load content</h3>
-            <p>${err.message}</p>
-            <p style="font-size: 0.9em; color: #666; margin-top: 20px;">
-              Error details: ${err.stack || 'No stack trace available'}
-            </p>
-          </div>
-        `;
-      }
-    }
-    
-    // Helper function to display content in the content view
-    function displayContent(text) {
-      // Create a container for the content
-      const contentContainer = document.createElement('div');
-      contentContainer.style.padding = '20px';
-      contentContainer.style.backgroundColor = '#fff';
-      contentContainer.style.border = '1px solid #ddd';
-      contentContainer.style.borderRadius = '4px';
-      contentContainer.style.marginTop = '20px';
-      contentContainer.style.fontFamily = 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-      contentContainer.style.lineHeight = '1.6';
-      
-      // Add emergency mode controls
-      const controlBar = document.createElement('div');
-      controlBar.className = 'content-controls';
-      controlBar.innerHTML = `
-        <button class="mode-toggle" onclick="document.getElementById('contentViewInner').classList.toggle('emergency-mode'); this.classList.toggle('active');">
-          <span class="icon">🔦</span> Emergency Mode
-        </button>
-        <button class="print-button" onclick="window.print();">
-          <span class="icon">🖨️</span> Print
-        </button>
-        <button class="font-size-button" onclick="changeFontSize(1);">
-          <span class="icon">A+</span>
-        </button>
-        <button class="font-size-button" onclick="changeFontSize(-1);">
-          <span class="icon">A-</span>
-        </button>
-      `;
-      
-      // Add script for font size adjustments
-      const sizeScript = document.createElement('script');
-      sizeScript.textContent = `
-        function changeFontSize(direction) {
-          const contentEl = document.getElementById('contentViewInner');
-          const currentSize = parseInt(window.getComputedStyle(contentEl).fontSize);
-          const newSize = currentSize + (direction * 2);
-          contentEl.style.fontSize = newSize + 'px';
-        }
-      `;
-      document.head.appendChild(sizeScript);
-      
-      // Check if the content looks like HTML
-      const isHtml = /<\s*html|<\s*body|<\s*div|<\s*p|<\s*h[1-6]|<\s*span|<\s*a\s+href/i.test(text);
-      
-      if (isHtml) {
-        // If it's HTML, sanitize it before display in iframe
-        console.log("Content appears to be HTML, sanitizing before rendering");
-        
-        const frame = document.createElement('iframe');
-        frame.style.width = '100%';
-        frame.style.height = '600px';
-        frame.style.border = '1px solid #ddd';
-        frame.style.borderRadius = '3px';
-        frame.style.backgroundColor = '#fff';
-        frame.sandbox = 'allow-same-origin allow-scripts'; // Allow scripts for link handling
-        
-        contentContainer.appendChild(controlBar);
-        contentContainer.appendChild(frame);
-        contentView.innerHTML = '';
-        contentView.appendChild(contentContainer);
-        
-        // Add content CSS for iframe
-        const contentStyle = document.createElement('style');
-        contentStyle.textContent = `
-          @media print {
-            .content-controls { display: none !important; }
-            body { font-size: 12pt; }
-          }
-          
-          .content-controls {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin-bottom: 15px;
-          }
-          
-          .content-controls button {
-            padding: 6px 12px;
-            background: #f5f5f5;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 14px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-          }
-          
-          .content-controls button:hover {
-            background: #e9e9e9;
-          }
-          
-          .content-controls button.active {
-            background: #4caf50;
-            color: white;
-          }
-          
-          .content-controls .icon {
-            font-size: 16px;
-          }
-        `;
-        document.head.appendChild(contentStyle);
-        
-        // Once the iframe is in the DOM, set its content
-        setTimeout(() => {
-          try {
-            const doc = frame.contentDocument || frame.contentWindow.document;
-            
-            // Sanitize the HTML content - parse it first
-            const sanitizedContent = sanitizeHtml(text);
-            
-            doc.open();
-            doc.write(sanitizedContent);
-            doc.close();
-            
-            // Add ID to the body for emergency mode toggle
-            const body = doc.querySelector('body');
-            if (body) {
-              body.id = 'contentViewInner';
-            }
-            
-            // Add script to handle links inside the iframe
-            const script = doc.createElement('script');
-            script.textContent = `
-              // Make links work with parent frame's database
-              document.addEventListener('click', function(e) {
-                const link = e.target.closest('a');
-                if (link && link.hasAttribute('data-original-url')) {
-                  e.preventDefault();
-                  // Call parent frame's handler
-                  window.parent.checkLinkInDatabase(link);
-                }
-              });
-            `;
-            doc.body.appendChild(script);
-            
-            // Adjust iframe height to content
-            frame.onload = function() {
-              try {
-                const height = Math.max(
-                  frame.contentDocument.body.scrollHeight, 
-                  frame.contentDocument.documentElement.scrollHeight
-                );
-                frame.style.height = (height + 50) + 'px';
-              } catch(e) {
-                console.log("Couldn't adjust iframe height:", e);
-              }
-            };
-          } catch(e) {
-            console.error("Error writing to iframe:", e);
-            // Fall back to text display
-            contentView.innerHTML = '';
-            displayAsText(text);
-          }
-        }, 0);
-      } else {
-        // Not HTML, display as preformatted text
-        displayAsText(text);
-      }
-      
-      function displayAsText(content) {
-        // Add emergency styling
-        const textStyle = document.createElement('style');
-        textStyle.textContent = `
-          #contentViewInner.emergency-mode {
-            background-color: #121212 !important;
-            color: #e0e0e0 !important;
-          }
-          
-          #contentViewInner.emergency-mode pre {
-            background-color: #1e1e1e !important;
-            color: #e0e0e0 !important;
-            border-color: #333 !important;
-          }
-        `;
-        document.head.appendChild(textStyle);
-        
-        // Display as preformatted text
-        const pre = document.createElement('pre');
-        pre.id = 'contentViewInner';
-        pre.style.whiteSpace = 'pre-wrap';
-        pre.style.wordBreak = 'break-word';
-        pre.style.padding = '20px';
-        pre.style.margin = '0';
-        pre.style.backgroundColor = '#f5f5f5';
-        pre.style.border = '1px solid #ddd';
-        pre.style.borderRadius = '3px';
-        pre.style.overflow = 'auto';
-        pre.style.fontSize = '14px';
-        pre.style.color = '#333';
-        pre.style.lineHeight = '1.5';
-        
-        // Try basic formatting for JSON
-        if (/^\s*[\{\[]/.test(content) && /[\}\]]\s*$/.test(content)) {
-          try {
-            const jsonObj = JSON.parse(content);
-            content = JSON.stringify(jsonObj, null, 2);
-          } catch(e) {
-            // Not valid JSON, use as-is
-          }
+          // Get topics from page_topics relation (older format)
+          pageTopics = state.database.page_topics
+            ? state.database.page_topics
+                .filter(pt => pt.page_id === page.id)
+                .map(pt => pt.topic)
+            : [];
         }
         
-        pre.textContent = content;
-        contentContainer.appendChild(controlBar);
-        contentContainer.appendChild(pre);
-        
-        contentView.innerHTML = '';
-        contentView.appendChild(contentContainer);
-      }
-    }
-    
-    /**
-     * Sanitizes HTML content to remove external elements and scripts
-     * @param {string} html - The HTML content to sanitize
-     * @returns {string} - Sanitized HTML
-     */
-    function sanitizeHtml(html) {
-      console.log("Sanitizing HTML content...");
-      
-      // Create a temporary DOM parser
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(html, 'text/html');
-      
-      // Remove all script tags
-      const scripts = doc.querySelectorAll('script');
-      scripts.forEach(script => script.remove());
-      
-      // Remove inline event handlers from all elements
-      const allElements = doc.querySelectorAll('*');
-      allElements.forEach(el => {
-        // Remove all on* attributes
-        for (const attr of el.attributes) {
-          if (attr.name.startsWith('on')) {
-            el.removeAttribute(attr.name);
-          }
-        }
-      });
-      
-      // Remove externally loaded resources
-      // 1. Remove external stylesheets
-      const styleLinks = doc.querySelectorAll('link[rel="stylesheet"]');
-      styleLinks.forEach(link => link.remove());
-      
-      // 2. Disable all iframes
-      const iframes = doc.querySelectorAll('iframe');
-      iframes.forEach(iframe => {
-        // Replace with a placeholder
-        const placeholder = doc.createElement('div');
-        placeholder.className = 'offline-placeholder iframe-placeholder';
-        placeholder.innerHTML = `
-          <div class="placeholder-icon">⊡</div>
-          <div class="placeholder-text">
-            <strong>Embedded Content</strong>
-            <span>${iframe.getAttribute('src') || iframe.getAttribute('title') || 'External content unavailable offline'}</span>
-          </div>
-        `;
-        iframe.parentNode.replaceChild(placeholder, iframe);
-      });
-      
-      // 3. Handle images - replace with placeholders or data URLs
-      const images = doc.querySelectorAll('img');
-      images.forEach(img => {
-        const altText = img.getAttribute('alt') || img.getAttribute('title') || 'Image';
-        const srcText = img.getAttribute('src') || '';
-        
-        // Replace with a placeholder
-        const placeholder = doc.createElement('div');
-        placeholder.className = 'offline-placeholder image-placeholder';
-        
-        // Try to get some context from the image dimensions for better layout
-        let width = img.getAttribute('width') || '';
-        let height = img.getAttribute('height') || '';
-        if (width) placeholder.style.width = width + 'px';
-        if (width && height) placeholder.style.aspectRatio = width + '/' + height;
-        
-        placeholder.innerHTML = `
-          <div class="placeholder-icon">🖼️</div>
-          <div class="placeholder-text">
-            <strong>${altText}</strong>
-            ${srcText && srcText.length < 60 ? `<span>${srcText}</span>` : ''}
-          </div>
-        `;
-        img.parentNode.replaceChild(placeholder, img);
-      });
-      
-      // 4. Remove video and audio elements
-      const media = doc.querySelectorAll('video, audio, source, track');
-      media.forEach(el => {
-        const placeholder = doc.createElement('div');
-        placeholder.className = 'offline-placeholder media-placeholder';
-        
-        const mediaType = el.tagName.toLowerCase() === 'video' ? 'Video' : 
-                          el.tagName.toLowerCase() === 'audio' ? 'Audio' : 'Media';
-        
-        placeholder.innerHTML = `
-          <div class="placeholder-icon">${mediaType === 'Video' ? '▶️' : '🔊'}</div>
-          <div class="placeholder-text">
-            <strong>${mediaType} Content</strong>
-            <span>${el.getAttribute('src') || el.getAttribute('title') || 'Unavailable offline'}</span>
-          </div>
-        `;
-        
-        if (el.parentNode) {
-          // Only replace if it has a parent (not already replaced)
-          if (el.parentNode.tagName.toLowerCase() !== 'audio' && 
-              el.parentNode.tagName.toLowerCase() !== 'video') {
-            el.parentNode.replaceChild(placeholder, el);
-          } else if (!el.parentNode.processed) {
-            // Mark the parent as processed to avoid duplicate replacements
-            el.parentNode.processed = true;
-            if (el.parentNode.parentNode) {
-              el.parentNode.parentNode.replaceChild(placeholder, el.parentNode);
-            }
-          }
-        }
-      });
-      
-      // 5. Modify all links to prevent navigation
-      const links = doc.querySelectorAll('a');
-      links.forEach(link => {
-        // Mark links but prevent navigation
-        const href = link.getAttribute('href') || '';
-        
-        // Skip empty, javascript, or anchor links
-        if (!href || href.startsWith('javascript:') || href === '#' || href.startsWith('#')) {
-          return;
-        }
-        
-        // We'll visually distinguish internal vs external links
-        const isExternal = href.startsWith('http') || href.startsWith('www');
-        
-        // Store the original URL as a data attribute
-        link.setAttribute('data-original-url', href);
-        link.setAttribute('title', `Link to: ${href}`);
-        
-        // Replace href with a custom handler
-        link.setAttribute('href', 'javascript:void(0)');
-        link.setAttribute('onclick', 'checkLinkInDatabase(this)');
-        
-        // Add visual indicators for link types
-        if (isExternal) {
-          link.classList.add('external-link');
-          // Add a small external link icon for clarity
-          if (!link.innerHTML.includes('</span>')) {
-            link.innerHTML += ' <span class="link-icon">🔗</span>';
-          }
-        } else if (href) {
-          link.classList.add('internal-link');
-        }
-      });
-      
-      // 6. Remove meta refresh tags
-      const metaRefresh = doc.querySelectorAll('meta[http-equiv="refresh"]');
-      metaRefresh.forEach(meta => meta.remove());
-      
-      // 7. Remove object, embed and applet tags
-      const embeds = doc.querySelectorAll('object, embed, applet');
-      embeds.forEach(embed => {
-        const placeholder = doc.createElement('div');
-        placeholder.className = 'offline-placeholder embed-placeholder';
-        placeholder.innerHTML = `
-          <div class="placeholder-icon">⚠️</div> 
-          <div class="placeholder-text">
-            <strong>Embedded Content</strong>
-            <span>Interactive content unavailable offline</span>
-          </div>
-        `;
-        embed.parentNode.replaceChild(placeholder, embed);
-      });
-      
-      // 8. Format tables for better readability
-      const tables = doc.querySelectorAll('table');
-      tables.forEach(table => {
-        table.classList.add('offline-table');
-        
-        // Add a container for horizontal scrolling on small screens
-        const tableContainer = doc.createElement('div');
-        tableContainer.className = 'table-container';
-        table.parentNode.insertBefore(tableContainer, table);
-        tableContainer.appendChild(table);
-      });
-      
-      // 9. Adjust content width and text formatting for readability
-      const contentContainers = doc.querySelectorAll('div, article, section, main');
-      contentContainers.forEach(container => {
-        // Avoid setting max-width on small elements
-        if (container.children.length > 2) {
-          container.classList.add('content-container');
-        }
-      });
-      
-      // Add custom styles for better offline readability
-      const style = doc.createElement('style');
-      style.textContent = `
-        /* Base styles for better readability */
-        body { 
-          font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", 
-                       Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", sans-serif;
-          line-height: 1.6;
-          color: #333;
-          background-color: #fff;
-          padding: 15px;
-          margin: 0;
-          font-size: 16px;
-        }
-        
-        /* Emergency mode toggle - can be activated with a button */
-        body.emergency-mode {
-          background-color: #000;
-          color: #f0f0f0;
-        }
-        
-        body.emergency-mode a { color: #90caf9; }
-        body.emergency-mode .offline-placeholder { background-color: #1a1a1a; color: #e0e0e0; }
-        
-        /* Container width limits for better readability */
-        .content-container {
-          max-width: 800px;
-          margin-left: auto;
-          margin-right: auto;
-        }
-        
-        /* Headers */
-        h1, h2, h3, h4, h5, h6 {
-          margin-top: 1.5em;
-          margin-bottom: 0.75em;
-          line-height: 1.3;
-        }
-        
-        h1 { font-size: 2em; }
-        h2 { font-size: 1.75em; border-bottom: 1px solid #eee; padding-bottom: 0.3em; }
-        h3 { font-size: 1.5em; }
-        h4 { font-size: 1.25em; }
-        
-        /* Paragraphs and lists */
-        p, ul, ol { margin-bottom: 1.2em; }
-        li { margin-bottom: 0.5em; }
-        
-        /* Code blocks */
-        pre, code { 
-          background: #f5f5f5; 
-          padding: 0.2em 0.4em; 
-          border-radius: 3px; 
-          font-family: monospace; 
-          font-size: 0.9em;
-          overflow-x: auto;
-        }
-        
-        pre { padding: 1em; white-space: pre-wrap; }
-        pre code { background: none; padding: 0; }
-        
-        /* Tables */
-        .table-container {
-          overflow-x: auto;
-          margin-bottom: 1.5em;
-          border: 1px solid #e0e0e0;
-          border-radius: 4px;
-        }
-        
-        table.offline-table {
-          border-collapse: collapse;
-          width: 100%;
-          margin: 0;
-        }
-        
-        table.offline-table th, 
-        table.offline-table td {
-          border: 1px solid #e0e0e0;
-          padding: 8px 12px;
-          text-align: left;
-        }
-        
-        table.offline-table th {
-          background-color: #f5f5f5;
-          font-weight: bold;
-        }
-        
-        table.offline-table tr:nth-child(even) {
-          background-color: #f9f9f9;
-        }
-        
-        /* Link styles */
-        a {
-          color: #0366d6;
-          text-decoration: underline;
-          cursor: pointer;
-        }
-        
-        a.external-link {
-          color: #0366d6;
-          cursor: not-allowed;
-          position: relative;
-        }
-        
-        a.internal-link {
-          color: #6f42c1;
-          cursor: not-allowed;
-        }
-        
-        .link-icon {
-          font-size: 0.8em;
-          opacity: 0.7;
-          margin-left: 2px;
-        }
-        
-        /* Placeholder styling for removed elements */
-        .offline-placeholder {
-          display: flex;
-          align-items: center;
-          padding: 12px;
-          background-color: #f8f8f8;
-          border: 1px solid #ddd;
-          border-radius: 4px;
-          margin: 10px 0;
-          max-width: 100%;
-          font-size: 14px;
-        }
-        
-        .placeholder-icon {
-          font-size: 24px;
-          margin-right: 12px;
-          opacity: 0.7;
-        }
-        
-        .placeholder-text {
-          display: flex;
-          flex-direction: column;
-        }
-        
-        .placeholder-text strong {
-          margin-bottom: 4px;
-        }
-        
-        .placeholder-text span {
-          color: #666;
-          word-break: break-word;
-          font-size: 0.9em;
-        }
-        
-        /* Specific placeholder types */
-        .image-placeholder {
-          min-height: 80px;
-          justify-content: center;
-          text-align: center;
-          padding: 16px;
-          background-color: #f5f5f5;
-        }
-        
-        .iframe-placeholder {
-          border: 1px dashed #ccc;
-          background-color: #f0f0f0;
-        }
-        
-        .media-placeholder {
-          background-color: #f0f0f0;
-        }
-        
-        /* Blockquotes */
-        blockquote {
-          border-left: 4px solid #ddd;
-          margin-left: 0;
-          padding-left: 16px;
-          color: #666;
-        }
-        
-        /* Images that weren't replaced */
-        img { 
-          max-width: 100%; 
-          height: auto; 
-          display: block;
-          margin: 1em auto;
-        }
-        
-        /* Print styles */
-        @media print {
-          body {
-            font-size: 12pt;
-            color: #000;
-            background: #fff;
-          }
-          
-          .offline-placeholder {
-            border: 1px solid #ccc;
-            break-inside: avoid;
-          }
-        }
-        
-        /* Emergency mode button */
-        #emergency-mode-toggle {
-          position: fixed;
-          bottom: 20px;
-          right: 20px;
-          background: #ff5722;
-          color: white;
-          border: none;
-          border-radius: 50%;
-          width: 50px;
-          height: 50px;
-          font-size: 24px;
-          cursor: pointer;
-          box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 999;
-        }
-        
-        /* Responsive styles */
-        @media (max-width: 768px) {
-          body { padding: 10px; font-size: 15px; }
-          h1 { font-size: 1.8em; }
-          h2 { font-size: 1.5em; }
-        }
-        
-        /* High contrast mode for vision impairments */
-        body.high-contrast {
-          background: #000;
-          color: #fff;
-        }
-        
-        body.high-contrast a { color: #ffff00; }
-        body.high-contrast .offline-placeholder { background: #333; color: #fff; border-color: #666; }
-        body.high-contrast code, body.high-contrast pre { background: #333; color: #fff; }
-      `;
-      
-      // Append our style to head
-      const head = doc.querySelector('head');
-      if (head) {
-        head.appendChild(style);
-      } else {
-        // If no head, create one
-        const newHead = doc.createElement('head');
-        newHead.appendChild(style);
-        const html = doc.querySelector('html');
-        if (html) {
-          html.insertBefore(newHead, html.firstChild);
-        }
-      }
-      
-      // Add emergency mode toggle button
-      const body = doc.querySelector('body');
-      if (body) {
-        const emergencyButton = doc.createElement('button');
-        emergencyButton.id = 'emergency-mode-toggle';
-        emergencyButton.title = 'Toggle Emergency Mode (Night/Low Power)';
-        emergencyButton.textContent = '🌙';
-        emergencyButton.setAttribute('onclick', 'document.body.classList.toggle("emergency-mode"); this.textContent = document.body.classList.contains("emergency-mode") ? "☀️" : "🌙";');
-        body.appendChild(emergencyButton);
-      }
-      
-      // Return the sanitized HTML
-      return doc.documentElement.outerHTML;
-    }
-    
-    backBtn.addEventListener('click', function() {
-      contentPanel.style.display = 'none';
-      resultsPanel.style.display = 'block';
-      statusBar.textContent = `Showing ${currentSearchResults.length} search results`;
-    });
-    
-    // Helper functions
-    function formatDate(dateStr) {
-      if (!dateStr || dateStr === 'Unknown') return 'Unknown';
-      
-      try {
-        const date = new Date(dateStr);
-        return date.toLocaleString();
-      } catch (e) {
-        return dateStr;
-      }
-    }
-    
-    // Format file size for display
-    function formatSize(bytes) {
-      if (!bytes || isNaN(bytes)) return '0 B';
-      
-      const sizes = ['B', 'KB', 'MB', 'GB'];
-      const i = Math.floor(Math.log(bytes) / Math.log(1024));
-      
-      return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${sizes[i]}`;
-    }
-    
-    // Quotes System
-    const quotes = [
-      {
-        text: "When everything seems to be going against you, remember that the airplane takes off against the wind, not with it.",
-        author: "Henry Ford"
-      },
-      {
-        text: "Do not judge me by my success, judge me by how many times I fell down and got back up again.",
-        author: "Nelson Mandela"
-      },
-      {
-        text: "The human capacity for burden is like bamboo – far more flexible than you'd ever believe at first glance.",
-        author: "Jodi Picoult"
-      },
-      {
-        text: "Knowledge, like air, is vital to life. Like air, no one should be denied it.",
-        author: "Alan Moore"
-      },
-      {
-        text: "Civilization is a race between education and catastrophe.",
-        author: "H.G. Wells"
-      },
-      {
-        text: "The library is the temple of learning, and learning has liberated more people than all the wars in history.",
-        author: "Carl Rowan"
-      },
-      {
-        text: "Hard times create strong people. Strong people create good times. Good times create weak people. And weak people create hard times.",
-        author: "G. Michael Hopf"
-      },
-      {
-        text: "Survival can be summed up in three words - never give up. That's the heart of it really. Just keep trying.",
-        author: "Bear Grylls"
-      },
-      {
-        text: "The nature of catastrophe is, after all, reasonably unvarying in the way it ruins, destroys, wounds and devastates. But if something can be learned from the event – not least something as profound as the theory of plate tectonics – then it somehow puts us on a diminished but more equal footing with nature.",
-        author: "Simon Winchester"
-      },
-      {
-        text: "A good half of the art of living is resilience.",
-        author: "Alain de Botton"
-      },
-      {
-        text: "The knowledge of all things is possible.",
-        author: "Leonardo da Vinci"
-      },
-      {
-        text: "Every civilization is, among its core assets, a legacy of knowledge.",
-        author: "Carl Sagan"
-      },
-      {
-        text: "What we know is a drop, what we don't know is an ocean.",
-        author: "Isaac Newton"
-      },
-      {
-        text: "I may not have gone where I intended to go, but I think I have ended up where I needed to be.",
-        author: "Douglas Adams"
-      },
-      {
-        text: "Hope is important because it can make the present moment less difficult to bear. If we believe that tomorrow will be better, we can bear a hardship today.",
-        author: "Thich Nhat Hanh"
-      }
-    ];
-
-    // Quote display function
-    function displayRandomQuote() {
-      const quoteElement = document.getElementById('quoteDisplay');
-      const randomIndex = Math.floor(Math.random() * quotes.length);
-      const quote = quotes[randomIndex];
-      
-      quoteElement.innerHTML = `
-        "${quote.text}"
-        <span class="quote-author">- ${quote.author}</span>
-      `;
-    }
-
-    // Function to check if a link is in the database
-    function checkLinkInDatabase(linkElement) {
-      if (!db) {
-        console.warn("Database not loaded, cannot check links");
-        return;
-      }
-      
-      const url = linkElement.getAttribute('data-original-url');
-      if (!url) {
-        console.warn("No URL found for this link");
-        return;
-      }
-      
-      console.log(`Checking if URL exists in database: ${url}`);
-      statusBar.textContent = `Checking link: ${url}`;
-      
-      try {
-        // Normalize the URL for better matching chances
-        const normalizedUrl = normalizeUrl(url);
-        console.log(`Normalized URL: ${normalizedUrl}`);
-        
-        // Try a few different versions of the URL to increase match chances
-        const urlVariants = generateUrlVariants(normalizedUrl);
-        console.log("Trying URL variants:", urlVariants);
-        
-        // Build a query to find this URL
-        const placeholders = urlVariants.map(() => '?').join(',');
-        const query = `SELECT id, title, url FROM pages WHERE url IN (${placeholders}) LIMIT 1`;
-        
-        const stmt = db.prepare(query);
-        urlVariants.forEach((variant, index) => {
-          stmt.bind(index + 1, variant);
+        // Add topic badges
+        pageTopics.forEach(topic => {
+          const topicBadge = document.createElement('span');
+          topicBadge.className = 'result-topic';
+          topicBadge.textContent = topic;
+          topicsContainer.appendChild(topicBadge);
         });
         
-        // Execute the query
-        let result = null;
-        while (stmt.step()) {
-          result = stmt.getAsObject();
-          break; // We only need the first match
-        }
-        stmt.free();
+        resultItem.appendChild(title);
+        resultItem.appendChild(url);
+        resultItem.appendChild(description);
+        resultItem.appendChild(date);
+        resultItem.appendChild(topicsContainer);
         
-        if (result && result.id) {
-          console.log(`Found matching page in database: ${result.title || result.url}`);
-          statusBar.textContent = `Following link to: ${result.title || result.url}`;
-          
-          // Save current position in navigation history if not already coming from history
-          const pageId = parseInt(result.id, 10);
-          
-          // Navigate to the found page
-          viewContent(pageId, true);
-          return;
-        }
+        // Add click event to view content
+        resultItem.addEventListener('click', () => {
+          viewContent(page.id);
+        });
         
-        // If we reach here, no match was found
-        console.log("No matching page found in database");
-        statusBar.textContent = `Link not found in database: ${url}`;
-        
-        // Show a notification to the user
-        const linkInfo = document.createElement('div');
-        linkInfo.className = 'link-notification';
-        linkInfo.innerHTML = `
-          <div style="padding: 15px; background-color: #fff3cd; border: 1px solid #ffeeba; border-radius: 4px; margin: 10px 0; font-size: 14px; color: #856404;">
-            <strong>External Link Not Found</strong>
-            <p>The linked page "${url}" is not available in this offline archive.</p>
-          </div>
-        `;
-        
-        // Show notification near the link
-        const rect = linkElement.getBoundingClientRect();
-        const frameRect = contentView.getBoundingClientRect();
-        
-        linkInfo.style.position = 'absolute';
-        linkInfo.style.zIndex = '1000';
-        linkInfo.style.width = '300px';
-        
-        // Position the notification near the link but within the frame
-        const left = Math.min(Math.max(rect.left, frameRect.left), frameRect.right - 310);
-        linkInfo.style.left = `${left}px`;
-        linkInfo.style.top = `${rect.bottom + window.scrollY + 5}px`;
-        
-        document.body.appendChild(linkInfo);
-        
-        // Remove the notification after a few seconds
-        setTimeout(() => {
-          if (linkInfo.parentNode) {
-            linkInfo.parentNode.removeChild(linkInfo);
-          }
-        }, 5000);
-        
-      } catch (err) {
-        console.error("Error checking link in database:", err);
-        statusBar.textContent = `Error checking link: ${err.message}`;
-      }
+        elements.resultsList.appendChild(resultItem);
+      });
     }
     
-    // Helper function to normalize URLs for better matching
-    function normalizeUrl(url) {
-      try {
-        let normalized = url.trim();
-        
-        // If the URL is relative, we can't fully normalize it
-        if (normalized.startsWith('/')) {
-          return normalized;
-        }
-        
-        // Add protocol if missing
-        if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
-          normalized = 'https://' + normalized;
-        }
-        
-        // Parse the URL
-        const parsedUrl = new URL(normalized);
-        
-        // Return just the pathname and search parts, which tend to be more stable
-        return parsedUrl.pathname + parsedUrl.search;
-        
-      } catch (err) {
-        console.warn("URL normalization failed:", err);
-        return url; // Return original URL if normalization fails
-      }
-    }
-    
-    // Generate variants of the URL to improve matching chances
-    function generateUrlVariants(url) {
-      const variants = [url];
+    // View content of a page
+    function viewContent(id) {
+      if (!state.database || !state.database.pages) return;
       
-      // Try with and without trailing slash
-      if (url.endsWith('/')) {
-        variants.push(url.slice(0, -1));
+      const page = state.database.pages.find(p => p.id === parseInt(id));
+      
+      if (!page) {
+        console.error('Page not found:', id);
+        return;
+      }
+      
+      // Set title
+      elements.contentTitle.textContent = page.title || page.url;
+      
+      // Display the HTML content directly
+      if (page.html_content) {
+        // Create HTML document from the content
+        elements.contentIframe.srcdoc = page.html_content;
       } else {
-        variants.push(url + '/');
-      }
-      
-      // Hostname variants (with and without www)
-      if (url.includes('://www.')) {
-        variants.push(url.replace('://www.', '://'));
-      } else if (url.includes('://')) {
-        const parts = url.split('://');
-        if (parts.length > 1) {
-          variants.push(parts[0] + '://www.' + parts[1]);
-        }
-      }
-      
-      return variants;
-    }
-    
-    // Add navigation controls to the content view
-    function addNavigationControls() {
-      // Create navigation controls if they don't exist
-      if (!document.getElementById('navigation-controls')) {
-        const nav = document.createElement('div');
-        nav.id = 'navigation-controls';
-        nav.className = 'navigation-controls';
-        nav.innerHTML = `
-          <button id="nav-back" title="Back to previous page" disabled>←</button>
-          <button id="nav-forward" title="Forward to next page" disabled>→</button>
+        // No content available
+        elements.contentIframe.srcdoc = `
+          <html>
+            <head>
+              <style>
+                body {
+                  font-family: monospace;
+                  margin: 20px;
+                  line-height: 1.6;
+                  color: #333;
+                }
+                h1 { color: #ff8c33; }
+                .description { 
+                  background-color: #f5f5f5;
+                  padding: 10px;
+                  border-left: 3px solid #ff8c33;
+                  margin: 20px 0;
+                }
+              </style>
+            </head>
+            <body>
+              <h1>${page.title || 'Untitled'}</h1>
+              ${page.description ? `<div class="description">${page.description}</div>` : ''}
+              <p>URL: <a href="${page.url}" target="_blank">${page.url}</a></p>
+              <p>Date archived: ${new Date(page.date_archived).toLocaleString()}</p>
+              <p>Topics: ${page.topics || 'None'}</p>
+              <h2>No HTML Content Available</h2>
+              <p>The full HTML content for this page was not found in the archive.</p>
+            </body>
+          </html>
         `;
-        
-        // Add style
-        const navStyle = document.createElement('style');
-        navStyle.textContent = `
-          .navigation-controls {
-            display: flex;
-            gap: 5px;
-            margin-right: 10px;
-          }
-          
-          .navigation-controls button {
-            padding: 3px 10px;
-            background: #f5f5f5;
-            border: 1px solid #ddd;
-            border-radius: 3px;
-            cursor: pointer;
-            font-size: 16px;
-          }
-          
-          .navigation-controls button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-          }
-          
-          .navigation-controls button:hover:not(:disabled) {
-            background: #e9e9e9;
-          }
-        `;
-        document.head.appendChild(navStyle);
-        
-        // Insert before the back button
-        const backBtnContainer = backBtn.parentNode;
-        backBtnContainer.insertBefore(nav, backBtn);
-        
-        // Add event listeners
-        document.getElementById('nav-back').addEventListener('click', navigateBack);
-        document.getElementById('nav-forward').addEventListener('click', navigateForward);
       }
-    }
-    
-    // Update the state of navigation controls
-    function updateNavigationControls() {
-      // Ensure controls exist
-      addNavigationControls();
       
-      const backBtn = document.getElementById('nav-back');
-      const forwardBtn = document.getElementById('nav-forward');
-      
-      if (backBtn && forwardBtn) {
-        backBtn.disabled = currentHistoryPosition <= 0;
-        forwardBtn.disabled = currentHistoryPosition >= navigationHistory.length - 1;
-      }
+      // Show viewer
+      elements.contentViewer.style.display = 'flex';
     }
     
-    // Navigate to previous page in history
-    function navigateBack() {
-      if (currentHistoryPosition > 0) {
-        currentHistoryPosition--;
-        const prevContentId = navigationHistory[currentHistoryPosition];
-        viewContent(prevContentId, true);
-        updateNavigationControls();
-      }
-    }
-    
-    // Navigate to next page in history
-    function navigateForward() {
-      if (currentHistoryPosition < navigationHistory.length - 1) {
-        currentHistoryPosition++;
-        const nextContentId = navigationHistory[currentHistoryPosition];
-        viewContent(nextContentId, true);
-        updateNavigationControls();
-      }
+    // Close content viewer
+    function closeContentViewer() {
+      elements.contentViewer.style.display = 'none';
+      elements.contentIframe.src = '';
     }
   </script>
 </body>
-</html>
+</html> 
