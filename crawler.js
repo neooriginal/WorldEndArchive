@@ -22,9 +22,9 @@ const { classifyContent } = require('./classifier');
 const CONFIG = {
   // Crawling parameters
   maxDepth: 3,                    // Maximum depth to crawl
-  concurrentRequests: 5,          // Number of concurrent requests
-  requestTimeout: 10000,          // Request timeout in ms
-  requestDelay: 500,              // Delay between batches in ms
+  concurrentRequests: 10,          // Number of concurrent requests
+  requestTimeout: 1000,          // Request timeout in ms
+  requestDelay: 100,              // Delay between batches in ms
   respectRobotsTxt: true,         // Whether to respect robots.txt
   humanuserAgents: [
     // Chrome
