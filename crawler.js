@@ -26,7 +26,30 @@ const CONFIG = {
   requestTimeout: 10000,          // Request timeout in ms
   requestDelay: 500,              // Delay between batches in ms
   respectRobotsTxt: true,         // Whether to respect robots.txt
-  userAgent: 'WorldEndArchive/1.0',  // User agent for requests
+  humanuserAgents: [
+    // Chrome
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.137 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.137 Safari/537.36",
+    "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.137 Mobile Safari/537.36",
+  
+    // Firefox
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:115.0) Gecko/20100101 Firefox/115.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7; rv:115.0) Gecko/20100101 Firefox/115.0",
+    "Mozilla/5.0 (Android 12; Mobile; rv:115.0) Gecko/115.0 Firefox/115.0",
+  
+    // Safari
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.1 Safari/605.1.15",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 16_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.3 Mobile/15E148 Safari/604.1",
+  
+    // Edge
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.137 Safari/537.36 Edg/112.0.1722.48",
+    
+    // Opera
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.137 Safari/537.36 OPR/98.0",
+  
+    // Older Devices/Browsers
+    "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1; Trident/4.0)",
+  ],
   
   // Content filtering
   minTopicMatchScore: 2,          // Minimum score to consider a topic match
@@ -176,7 +199,7 @@ async function isAllowedByRobotsTxt(url) {
         const response = await axios.get(robotsUrl, { 
           timeout: CONFIG.requestTimeout,
           headers: {
-            'User-Agent': CONFIG.userAgent
+            'User-Agent': CONFIG.humanuserAgents[Math.floor(Math.random() * CONFIG.humanuserAgents.length)]
           }
         });
         
@@ -202,7 +225,7 @@ async function isAllowedByRobotsTxt(url) {
           if (trimmed.toLowerCase().startsWith('user-agent:')) {
             const agent = trimmed.split(':')[1].trim();
             activeAgent = agent;
-            inRelevantAgent = (agent === '*' || CONFIG.userAgent.includes(agent));
+            inRelevantAgent = (agent === '*' || CONFIG.humanuserAgents.includes(agent));
             continue;
           }
           
@@ -272,25 +295,65 @@ async function crawlPage(url, parentUrl, depth) {
     // Check if allowed by robots.txt
     if (!await isAllowedByRobotsTxt(url)) {
       console.log(`Skipping (robots.txt): ${url}`);
+      markUrlFailed(url, "Blocked by robots.txt");
       return;
     }
     
-    // Fetch page
-    const response = await axios.get(url, {
-      timeout: CONFIG.requestTimeout,
-      maxContentLength: CONFIG.maxPageSize,
-      headers: {
-        'User-Agent': CONFIG.userAgent
-      },
-      responseType: 'arraybuffer'  // Use arraybuffer to handle binary content
-    });
+    // Fetch page with retry logic
+    let response;
+    let retries = 3;
+    
+    while (retries > 0) {
+      try {
+        response = await axios.get(url, {
+          timeout: CONFIG.requestTimeout,
+          maxContentLength: CONFIG.maxPageSize,
+          headers: {
+            'User-Agent': CONFIG.humanuserAgents[Math.floor(Math.random() * CONFIG.humanuserAgents.length)],
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          },
+          responseType: 'arraybuffer',  // Use arraybuffer to handle binary content
+          validateStatus: status => status < 500 // Accept all status codes below 500 to handle them ourselves
+        });
+        break; // Success, exit retry loop
+      } catch (e) {
+        retries--;
+        if (retries === 0) {
+          throw e; // Re-throw if all retries failed
+        }
+        console.log(`Retry ${3-retries}/3 for ${url} after error: ${e.message}`);
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait before retry
+      }
+    }
+    
+    // Handle HTTP error codes, but only mark 403, 401, 410 as permanently failed
+    if (response.status !== 200) {
+      const errorMessage = `HTTP error: ${response.status}`;
+      console.log(`Skipping (${errorMessage}): ${url}`);
+      
+      // Only mark permanent errors as failed, others could be temporary
+      if ([401, 403, 410].includes(response.status)) {
+        markUrlFailed(url, errorMessage);
+      } else {
+        // For other errors (like 429, 500, etc), we'll add back to queue with a delay if depth allows
+        if (depth < CONFIG.maxDepth) {
+          console.log(`Re-queuing ${url} for later retry due to temporary error`);
+          await addToQueue(url, parentUrl, depth, 1); // Lower priority for retry
+        }
+      }
+      return;
+    }
     
     // Determine content type
     const contentType = response.headers['content-type'] || '';
     
     // Skip non-HTML content
-    if (!contentType.includes('text/html')) {
-      console.log(`Skipping (not HTML): ${url}`);
+    if (!CONFIG.allowedContentTypes.some(type => contentType.includes(type))) {
+      console.log(`Skipping (unsupported content type ${contentType}): ${url}`);
+      markUrlFailed(url, `Unsupported content type: ${contentType}`);
       return;
     }
     
@@ -313,8 +376,44 @@ async function crawlPage(url, parentUrl, depth) {
     // Extract text content for classification
     const bodyText = $('body').text();
     
-    // Skip if content is too short
-    if (bodyText.length < CONFIG.minContentLength) {
+    // Skip pages with extremely short content, but extract links regardless
+    const isContentTooShort = bodyText.length < CONFIG.minContentLength;
+    
+    // Extract links regardless of content length if we haven't reached max depth
+    if (depth < CONFIG.maxDepth) {
+      const links = [];
+      
+      // Find all links
+      $('a').each((_, link) => {
+        const href = $(link).attr('href');
+        if (href) {
+          try {
+            // Convert to absolute URL
+            const absoluteUrl = new URL(href, url).toString();
+            
+            // Check if URL should be crawled
+            if (shouldCrawlUrl(absoluteUrl)) {
+              links.push(absoluteUrl);
+            }
+          } catch (e) {
+            // Invalid URL, skip
+          }
+        }
+      });
+      
+      // Add unique links to queue
+      const newLinks = [];
+      for (const link of links) {
+        if (await addToQueue(link, url, depth + 1)) {
+          newLinks.push(link);
+        }
+      }
+      
+      console.log(`Found ${links.length} links, added ${newLinks.length} new ones to queue`);
+    }
+    
+    // Skip archiving if content is too short, but we've already added the links
+    if (isContentTooShort) {
       console.log(`Skipping (content too short): ${url}`);
       return;
     }
@@ -357,44 +456,69 @@ async function crawlPage(url, parentUrl, depth) {
       throw storageError;
     }
     
-    // Extract links for further crawling if we haven't reached max depth
-    if (depth < CONFIG.maxDepth) {
-      const links = [];
-      
-      // Find all links
-      $('a').each((_, link) => {
-        const href = $(link).attr('href');
-        if (href) {
-          try {
-            // Convert to absolute URL
-            const absoluteUrl = new URL(href, url).toString();
-            
-            // Check if URL should be crawled
-            if (shouldCrawlUrl(absoluteUrl)) {
-              links.push(absoluteUrl);
-            }
-          } catch (e) {
-            // Invalid URL, skip
-          }
-        }
-      });
-      
-      // Add unique links to queue
-      const newLinks = [];
-      for (const link of links) {
-        if (await addToQueue(link, url, depth + 1)) {
-          newLinks.push(link);
-        }
-      }
-      
-      console.log(`Found ${links.length} links, added ${newLinks.length} new ones to queue`);
-    }
-    
     console.log(`Successfully archived: ${url}`);
   } catch (error) {
     console.error(`Error crawling ${url}: ${error.message}`);
     markUrlFailed(url, error.message);
   }
+}
+
+/**
+ * Get additional seed URLs beyond the recommended ones
+ * This function provides fallback URLs if the crawler runs out of URLs to crawl
+ */
+function getAdditionalSeeds() {
+  return [
+    // Academic and Educational
+    'https://www.khanacademy.org/',
+    'https://ocw.mit.edu/',
+    'https://www.coursera.org/',
+    'https://www.edx.org/',
+    
+    // Government Resources
+    'https://www.usa.gov/',
+    'https://www.loc.gov/',
+    'https://www.archives.gov/',
+    'https://www.epa.gov/',
+    'https://www.energy.gov/',
+    
+    // Technical Documentation
+    'https://docs.python.org/',
+    'https://docs.oracle.com/en/java/',
+    'https://developer.apple.com/documentation/',
+    'https://docs.microsoft.com/',
+    
+    // Science and Research (Additional)
+    'https://www.nasa.gov/',
+    'https://www.nsf.gov/',
+    'https://www.noaa.gov/',
+    'https://www.pnas.org/',
+    
+    // Open Source Knowledge
+    'https://openstax.org/',
+    'https://www.openculture.com/',
+    'https://wikieducator.org/',
+    
+    // DIY and Practical Skills
+    'https://www.instructables.com/',
+    'https://www.popularmechanics.com/',
+    'https://www.popularsciencearchive.com/',
+    
+    // Health and Medicine
+    'https://health.gov/',
+    'https://www.aafp.org/',
+    'https://medlineplus.gov/',
+    
+    // Agriculture and Gardening
+    'https://www.nal.usda.gov/',
+    'https://garden.org/',
+    'https://extension.psu.edu/',
+    
+    // Mathematics and Statistics
+    'https://brilliant.org/',
+    'https://stats.stackexchange.com/',
+    'https://www.ams.org/'
+  ];
 }
 
 /**
@@ -412,20 +536,39 @@ async function startCrawler(seedUrls, callbacks = {}) {
   // Initialize data directory
   initCrawler();
   
-  // Add seed URLs to queue with depth 0 and high priority
-  for (const url of seedUrls) {
-    await addToQueue(url, null, 0, 10);  // Priority 10 for seed URLs
-  }
+  // Store original seeds for reloading
+  const originalSeeds = [...seedUrls];
   
-  // Process URLs in batches until queue is empty or stopped
+  // Get backup seeds for when we exhaust the original ones
+  const additionalSeeds = getAdditionalSeeds();
+  let additionalSeedsUsed = false;
+  
+  // Add seed URLs to queue with depth 0 and high priority
+  await addSeedUrlsToQueue(seedUrls);
+  
+  // Process URLs in batches until explicitly stopped
   let running = true;
-  let consecutive404Count = 0;
+  let emptyBatchCount = 0;
   
   while (running) {
     // Get queue size for reporting
     try {
       const queueSize = await getQueueSize();
       onQueueUpdate(queueSize);
+      
+      // If queue is nearly empty, reload seed URLs
+      if (queueSize < 5) {
+        if (emptyBatchCount > 5 && !additionalSeedsUsed) {
+          console.log("Queue is nearly empty. Adding additional seed URLs to continue crawling...");
+          await addSeedUrlsToQueue(additionalSeeds);
+          additionalSeedsUsed = true;
+          emptyBatchCount = 0;
+        } else if (emptyBatchCount > 10) {
+          console.log("Queue is nearly empty. Reloading original seed URLs to continue crawling...");
+          await addSeedUrlsToQueue(originalSeeds);
+          emptyBatchCount = 0;
+        }
+      }
     } catch (error) {
       console.error('Error getting queue size:', error);
     }
@@ -433,14 +576,13 @@ async function startCrawler(seedUrls, callbacks = {}) {
     const batchProcessed = await processBatch(CONFIG.concurrentRequests, onPageProcessed);
     
     if (!batchProcessed) {
-      consecutive404Count++;
+      emptyBatchCount++;
+      console.log(`No URLs processed in this batch. Empty batch count: ${emptyBatchCount}`);
       
-      if (consecutive404Count >= 3) {
-        console.log('Queue appears to be empty, stopping crawler');
-        running = false;
-      }
+      // Wait longer between empty batches to allow for database updates
+      await new Promise(resolve => setTimeout(resolve, CONFIG.requestDelay * 3));
     } else {
-      consecutive404Count = 0;
+      emptyBatchCount = 0;
     }
     
     // Small delay between batches
@@ -448,6 +590,18 @@ async function startCrawler(seedUrls, callbacks = {}) {
   }
   
   console.log('Crawler finished');
+}
+
+/**
+ * Helper function to add seed URLs to the queue
+ */
+async function addSeedUrlsToQueue(seedUrls) {
+  for (const url of seedUrls) {
+    if (url && typeof url === 'string') {
+      const cleanedUrl = url.trim().replace(/^\s+https:/i, 'https:').replace(/^https:(?!\/\/)/, 'https://');
+      await addToQueue(cleanedUrl, null, 0, 10);  // Priority 10 for seed URLs
+    }
+  }
 }
 
 /**
@@ -467,7 +621,9 @@ async function processBatch(batchSize, onPageProcessed = () => {}) {
   console.log(`Processing batch of ${batch.length} URLs`);
   
   // Mark URLs as in progress
-  markUrlInProgress(batch.map(item => item.url));
+  for (const item of batch) {
+    markUrlInProgress(item.url);
+  }
   
   // Process each URL
   const promises = batch.map(item => 
@@ -553,7 +709,7 @@ function getRecommendedSeeds() {
     'https://ocw.mit.edu/courses/find-by-topic/#cat=engineering',
     'https://www.buildingsciencecorp.com/',
     'https://www.structuremag.org/',
-    
+
     // Agriculture & Food Production
     'https://www.almanac.com/',
     'https://extension.umn.edu/yard-and-garden',
@@ -561,33 +717,27 @@ function getRecommendedSeeds() {
     'https://www.fao.org/',
     'https://www.permaculturenews.org/',
     'https://smallfarms.cornell.edu/resources/',
-    
+
     // Computing & Programming
     'https://developer.mozilla.org/',
     'https://www.w3schools.com/',
     'https://www.geeksforgeeks.org/',
     'https://learnxinyminutes.com/',
-    'https://cs.stanford.edu/people/eroberts/courses/',
-    
+
     // Mathematics
-    'https://www.mathsisfun.com/',
-    'https://tutorial.math.lamar.edu/',
-    'https://www.khanacademy.org/math',
-    'https://ocw.mit.edu/courses/find-by-topic/#cat=mathematics',
-    
-    // History & Culture (important context)
-    'https://www.worldhistory.org/',
-    'https://www.smithsonianmag.com/history/',
-    'https://ehistory.osu.edu/',
-    'https://www.loc.gov/collections/',
-    
-    // Literature (classics and important works)
-    'https://www.gutenberg.org/browse/scores/top',
-    'https://www.poetryfoundation.org/poems/browse',
-    
-    // Limited Entertainment (small selection for morale)
-    'https://www.classicshorts.com/',
-    'https://publicdomainmovies.info/'
+    'https://mathworld.wolfram.com/',
+    'https://mathoverflow.net/',
+
+    // History & Culture
+    'https://archive.org/',
+     
+    // Environment & Conservation
+    'https://www.conservationfund.org',
+    'https://www.treehugger.com',
+     
+    // Practical DIY Skills 
+    'https://www.diyprojects.com',
+    'https://www.familyhandyman.com',
   ];
 }
 

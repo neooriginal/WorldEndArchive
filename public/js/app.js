@@ -250,7 +250,7 @@ function setupEventListeners() {
                 const url = URL.createObjectURL(blob);
                 const downloadLink = document.createElement('a');
                 downloadLink.href = url;
-                downloadLink.download = 'worldend_archive.db';
+                downloadLink.download = 'worldend_archive.json';
                 document.body.appendChild(downloadLink);
                 downloadLink.click();
                 document.body.removeChild(downloadLink);
@@ -319,26 +319,8 @@ async function loadCrawlerStats() {
     console.log('Received stats:', stats);
     
     // Update application state
-    appState.crawlerStats = stats.crawler || {
-      isRunning: false,
-      queueSize: 0,
-      processedUrls: 0,
-      crawlSpeed: 0,
-      runtime: 0,
-      successRate: 100,
-      lastProcessedUrl: null,
-      infiniteMode: false,
-      maxDbSize: 0
-    };
-    appState.dbStats = stats.database || {
-      fileSize: '0 B',
-      fileSizeBytes: 0,
-      totalPages: 0,
-      totalSizeRaw: '0 B',
-      totalSizeCompressed: '0 B',
-      compressionRatio: '0:0',
-      topTopics: []
-    };
+    appState.crawlerStats = stats.crawler 
+    appState.dbStats = stats.database
     
     console.log('Updated app state:', appState);
     
@@ -361,116 +343,68 @@ async function loadCrawlerStats() {
  * Update crawler stats UI
  */
 function updateCrawlerStatsUI() {
-  if (!elements.crawlerStats) return;
-  
   const stats = appState.crawlerStats;
   const dbStats = appState.dbStats;
   
-  // Update status indicator
-  const statusIndicator = elements.crawlerStats.querySelector('.status-indicator');
-  if (statusIndicator) {
-    statusIndicator.className = `status-indicator status-${stats.isRunning ? 'online' : 'offline'}`;
+  // Update status indicator and text
+  if (elements.crawlerStatusIndicator) {
+    elements.crawlerStatusIndicator.className = `status-indicator status-${stats.isRunning ? 'online' : 'offline'}`;
   }
   
-  // Update stats grid
-  const statsGrid = elements.crawlerStats.querySelector('.stats-grid');
-  if (statsGrid) {
-    statsGrid.innerHTML = `
-      <div class="stat-item">
-        <div class="stat-label">Queue Size</div>
-        <div class="stat-value">${stats.queueSize}</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-label">Processed URLs</div>
-        <div class="stat-value">${stats.processedUrls}</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-label">Crawl Speed</div>
-        <div class="stat-value">${stats.crawlSpeed} pages/min</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-label">Runtime</div>
-        <div class="stat-value">${formatDuration(stats.runtime)}</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-label">Database Size</div>
-        <div class="stat-value">${dbStats.fileSize}</div>
-        <div class="stat-subtitle">${stats.infiniteMode ? 'Infinite Mode' : `Max: ${formatBytes(stats.maxDbSize)}`}</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-label">Success Rate</div>
-        <div class="stat-value">${stats.successRate}%</div>
-      </div>
-    `;
+  if (elements.crawlerStatusText) {
+    elements.crawlerStatusText.textContent = stats.isRunning ? 'ONLINE' : 'OFFLINE';
   }
   
-  // Update progress bar
-  const progressBar = elements.crawlerStats.querySelector('.db-progress-fill');
-  if (progressBar && stats.maxDbSize > 0) {
+  // Update individual stat elements
+  if (elements.queueSize) {
+    elements.queueSize.textContent = stats.queueSize;
+  }
+  
+  if (elements.processedUrls) {
+    elements.processedUrls.textContent = dbStats.totalPages;
+  }
+  
+  if (elements.crawlSpeed) {
+    elements.crawlSpeed.textContent = stats.crawlSpeed;
+  }
+  
+  if (elements.crawlerRuntime) {
+    elements.crawlerRuntime.textContent = formatDuration(stats.totalRuntime);
+  }
+  
+  if (elements.dbSize) {
+    elements.dbSize.textContent = dbStats.fileSize;
+  }
+  
+  if (elements.dbSizePercent && stats.maxDbSize > 0) {
     const progress = (dbStats.fileSizeBytes / stats.maxDbSize) * 100;
-    progressBar.style.width = `${Math.min(progress, 100)}%`;
+    elements.dbSizePercent.textContent = `${Math.min(Math.round(progress), 100)}%`;
   }
   
-  // Update last processed URL
-  const lastUrlElement = elements.crawlerStats.querySelector('.last-url');
-  if (lastUrlElement && stats.lastProcessedUrl) {
-    lastUrlElement.textContent = stats.lastProcessedUrl;
+  if (elements.successRate) {
+    elements.successRate.textContent = `${stats.successRate}%`;
   }
+  
+  // Update crawler mode panel
+  updateCrawlerModePanel(stats.isRunning);
 }
 
+
 /**
- * Update topic distribution chart
+ * Format seconds to a duration string (HH:MM:SS)
  */
-function updateTopicDistribution() {
-  if (!elements.topicDistribution) return;
+function formatDuration(seconds) {
+  if (!seconds || isNaN(seconds)) return '00:00:00';
   
-  const topTopics = appState.dbStats.topTopics || [];
-  if (topTopics.length === 0) {
-    elements.topicDistribution.innerHTML = '<div class="no-data">No topic data available</div>';
-    return;
-  }
+  const hrs = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
   
-  // Get max count for scaling
-  const maxCount = Math.max(...topTopics.map(t => t.count));
-  
-  // Clear existing content
-  elements.topicDistribution.innerHTML = '';
-  
-  // Create bars for each topic
-  topTopics.forEach(topic => {
-    const percent = Math.round((topic.count / maxCount) * 100);
-    
-    const topicBar = document.createElement('div');
-    topicBar.className = 'topic-bar';
-    
-    const barHeader = document.createElement('div');
-    barHeader.className = 'topic-bar-header';
-    
-    const topicName = document.createElement('div');
-    topicName.className = 'topic-name';
-    topicName.textContent = topic.topic.toUpperCase();
-    
-    const topicCount = document.createElement('div');
-    topicCount.className = 'topic-count';
-    topicCount.textContent = topic.count;
-    
-    barHeader.appendChild(topicName);
-    barHeader.appendChild(topicCount);
-    
-    const barProgress = document.createElement('div');
-    barProgress.className = 'topic-bar-progress';
-    
-    const barFill = document.createElement('div');
-    barFill.className = 'topic-bar-fill';
-    barFill.style.width = `${percent}%`;
-    
-    barProgress.appendChild(barFill);
-    
-    topicBar.appendChild(barHeader);
-    topicBar.appendChild(barProgress);
-    
-    elements.topicDistribution.appendChild(topicBar);
-  });
+  return [
+    hrs.toString().padStart(2, '0'),
+    mins.toString().padStart(2, '0'),
+    secs.toString().padStart(2, '0')
+  ].join(':');
 }
 
 /**
@@ -488,128 +422,6 @@ function formatTime(seconds) {
   ].join(':');
 }
 
-/**
- * Load available topics from API
- */
-async function loadTopics() {
-  try {
-    const response = await fetch('/api/topics');
-    const topics = await response.json();
-    appState.topics = topics;
-    return topics;
-  } catch (error) {
-    console.error('Failed to load topics:', error);
-    return [];
-  }
-}
-
-/**
- * Load system statistics from API
- */
-async function loadStats() {
-  try {
-    const response = await fetch('/api/stats');
-    const stats = await response.json();
-    appState.stats = stats;
-    return stats;
-  } catch (error) {
-    console.error('Failed to load stats:', error);
-    return {};
-  }
-}
-
-/**
- * Render topics in the UI
- */
-function updateTopicsUI() {
-  if (!elements.topicsContainer) return;
-  
-  // Clear existing topics
-  elements.topicsContainer.innerHTML = '';
-  
-  // Create topic header
-  const topicsTitle = document.createElement('div');
-  topicsTitle.className = 'topics-title';
-  topicsTitle.textContent = 'KNOWLEDGE SECTORS';
-  elements.topicsContainer.appendChild(topicsTitle);
-  
-  // Create topics grid
-  const topicsGrid = document.createElement('div');
-  topicsGrid.className = 'topics-grid';
-  
-  // Add each topic
-  appState.topics.forEach(topic => {
-    const topicTag = document.createElement('div');
-    topicTag.className = 'topic-tag';
-    if (appState.selectedTopics.includes(topic.id)) {
-      topicTag.classList.add('active');
-    }
-    topicTag.textContent = topic.name;
-    topicTag.dataset.topic = topic.id;
-    
-    // Toggle topic selection on click
-    topicTag.addEventListener('click', () => {
-      toggleTopic(topic.id);
-      topicTag.classList.toggle('active');
-    });
-    
-    topicsGrid.appendChild(topicTag);
-  });
-  
-  elements.topicsContainer.appendChild(topicsGrid);
-}
-
-/**
- * Toggle topic selection
- */
-function toggleTopic(topicId) {
-  const index = appState.selectedTopics.indexOf(topicId);
-  if (index === -1) {
-    appState.selectedTopics.push(topicId);
-  } else {
-    appState.selectedTopics.splice(index, 1);
-  }
-}
-
-/**
- * Update statistics display
- */
-function updateStatsUI() {
-  if (!elements.statsContainer) return;
-  
-  const stats = appState.stats;
-  
-  if (elements.totalPages) {
-    elements.totalPages.textContent = stats.totalPages || '0';
-  }
-  
-  if (elements.totalSizeRaw) {
-    elements.totalSizeRaw.textContent = stats.totalSizeRaw || '0 B';
-  }
-  
-  if (elements.totalSizeCompressed) {
-    elements.totalSizeCompressed.textContent = stats.totalSizeCompressed || '0 B';
-  }
-  
-  if (elements.compressionRatio) {
-    elements.compressionRatio.textContent = stats.compressionRatio || '0:0';
-  }
-  
-
-  
-  // Update system status indicator
-  if (elements.systemStatus) {
-    const statusIndicator = document.createElement('span');
-    statusIndicator.className = 'status-indicator status-online';
-    
-    const statusText = document.createElement('span');
-    statusText.textContent = 'SYSTEM OPERATIONAL';
-    
-    elements.systemStatus.innerHTML = '';
-    elements.systemStatus.appendChild(statusIndicator);
-    elements.systemStatus.appendChild(statusText);
-  }
-}
 
 /**
  * Perform search based on current query and selected topics
@@ -723,87 +535,6 @@ function renderSearchResults() {
 }
 
 /**
- * View the content of a specific page
- */
-async function viewContent(id) {
-  // Show loading state
-  setLoading(true);
-  
-  try {
-    // Fetch content
-    const response = await fetch(`/api/content/${id}`);
-    
-    // Check if HTML response
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('text/html')) {
-      // Open content viewer with iframe
-      openContentViewer();
-      
-      // Create iframe for isolated content
-      const iframe = document.createElement('iframe');
-      iframe.sandbox = 'allow-same-origin';
-      elements.contentBody.innerHTML = '';
-      elements.contentBody.appendChild(iframe);
-      
-      // Get response text
-      const html = await response.text();
-      
-      // Set iframe content
-      const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-      iframeDoc.open();
-      iframeDoc.write(html);
-      iframeDoc.close();
-      
-      // Set title
-      const title = iframeDoc.title || 'Archived Content';
-      elements.contentTitle.textContent = title;
-    } else {
-      // JSON response for text content
-      const data = await response.json();
-      
-      // Open content viewer
-      openContentViewer();
-      
-      // Set content
-      elements.contentTitle.textContent = data.title || 'Archived Content';
-      elements.contentBody.innerHTML = `
-        <div class="text-content">
-          <p class="content-url">${data.url}</p>
-          <div class="content-text">${data.content}</div>
-        </div>
-      `;
-    }
-    
-    // Update application state
-    appState.currentView = 'content';
-  } catch (error) {
-    console.error('Failed to load content:', error);
-    alert(`ERROR: Could not retrieve content (${error.message})`);
-  } finally {
-    setLoading(false);
-  }
-}
-
-/**
- * Open the content viewer
- */
-function openContentViewer() {
-  elements.contentViewer.classList.add('active');
-  document.body.style.overflow = 'hidden'; // Prevent scrolling behind viewer
-}
-
-/**
- * Close the content viewer
- */
-function closeContentViewer() {
-  if (!elements.contentViewer) return;
-  
-  elements.contentViewer.classList.remove('active');
-  document.body.style.overflow = ''; // Restore scrolling
-  appState.currentView = 'results';
-}
-
-/**
  * Set loading state
  */
 function setLoading(isLoading) {
@@ -827,67 +558,6 @@ function formatDate(dateString) {
   }
   
   return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
-}
-
-/**
- * Calculate and update ETA to reach maximum storage capacity
- * @param {number} currentSizeBytes - Current database size in bytes
- * @param {number} crawlSpeed - Current crawl speed in pages per minute
- */
-function updateStorageETA(currentSizeBytes, crawlSpeed) {
-  let etaElement = document.getElementById('storage-eta');
-  if (!etaElement) {
-    // Create ETA element if it doesn't exist
-    etaElement = document.createElement('div');
-    etaElement.id = 'storage-eta';
-    etaElement.className = 'stat-subtitle';
-    
-    // Add after db percentage
-    const dbSizeElement = document.getElementById('db-size');
-    if (dbSizeElement && dbSizeElement.parentNode) {
-      dbSizeElement.parentNode.appendChild(etaElement);
-    }
-  }
-  
-  // If crawl speed is 0 or too low, can't calculate ETA
-  if (!crawlSpeed || crawlSpeed < 0.1) {
-    etaElement.textContent = 'ETA: N/A at current speed';
-    return;
-  }
-  
-  // Calculate remaining bytes
-  const remainingBytes = MAX_DB_SIZE_BYTES - currentSizeBytes;
-  
-  // If already at max, show 100%
-  if (remainingBytes <= 0) {
-    etaElement.textContent = 'Storage limit reached';
-    return;
-  }
-  
-  // Calculate average bytes per page based on current data
-  const averageBytesPerPage = currentSizeBytes / appState.dbStats.totalPages;
-  
-  if (!averageBytesPerPage || isNaN(averageBytesPerPage)) {
-    etaElement.textContent = 'ETA: Calculating...';
-    return;
-  }
-  
-  // Calculate how many more pages until max
-  const remainingPages = remainingBytes / averageBytesPerPage;
-  
-  // Calculate time in minutes
-  const minutesRemaining = remainingPages / crawlSpeed;
-  
-  // Format the ETA
-  if (minutesRemaining < 60) {
-    etaElement.textContent = `ETA: ~${Math.ceil(minutesRemaining)} minutes to capacity`;
-  } else if (minutesRemaining < 24 * 60) {
-    const hours = Math.ceil(minutesRemaining / 60);
-    etaElement.textContent = `ETA: ~${hours} hours to capacity`;
-  } else {
-    const days = Math.ceil(minutesRemaining / (24 * 60));
-    etaElement.textContent = `ETA: ~${days} days to capacity`;
-  }
 }
 
 /**

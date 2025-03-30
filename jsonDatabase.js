@@ -242,6 +242,11 @@ function getNextBatchFromQueue(batchSize, maxAttempts = 3) {
 
 // Mark URLs as in progress
 function markUrlInProgress(urls) {
+  //make sure it can handle array or single url
+  if (!Array.isArray(urls)) {
+    urls = [urls];
+  }
+  
   urls.forEach(url => {
     const item = database.crawl_queue.find(q => q.url === url);
     if (item) {

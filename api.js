@@ -200,16 +200,7 @@ router.get('/download-db', (req, res) => {
       res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
       return res.end();
     }
-    
-    // For GET requests, proceed with download
-    
-    // Prevent concurrent downloads that might corrupt the file
-    if (isDbDownloading) {
-      return res.status(409).json({ error: 'Another download is already in progress. Please try again later.' });
-    }
-    
-    // Set download flag
-    isDbDownloading = true;
+
     
     // Set headers for download
     res.setHeader('Content-Type', 'application/json');
@@ -300,10 +291,11 @@ router.get('/crawler-stats', async (req, res) => {
     if (dbStats.queue && dbStats.queue.in_progress > 0) {
       currentCrawlerStats.isRunning = true;
     }
-    
+
     // Update crawler stats based on database stats
     if (dbStats.processed_pages !== undefined) {
-      currentCrawlerStats.processedUrls = parseInt(dbStats.processed_pages) || 0;
+
+      currentCrawlerStats.processedUrls = parseInt(dbStats.processedUrls) || 0;
     }
     
     // Update queue size from database stats
