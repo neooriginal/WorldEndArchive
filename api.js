@@ -7,16 +7,24 @@ const {
   getPageContent, 
   getStats, 
   vacuumDatabase
-} = require('./database');
-const { 
-  decompressData, 
-  formatSize, 
-  getCompressionRatio 
-} = require('./compression');
+} = require('./jsonDatabase');
 const { 
   getAvailableTopics, 
   getTopicKeywords 
 } = require('./classifier');
+
+// Helper function to format bytes to human readable form
+function formatSize(bytes, decimals = 2) {
+  if (bytes === 0) return '0 Bytes';
+  
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+  
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+}
 
 // Crawler state tracking for statistics
 let crawlerStats = {
@@ -75,18 +83,14 @@ router.get('/content/:id', async (req, res) => {
       return res.status(404).json({ error: 'Content not found' });
     }
     
-    const { compressed_content, url, title } = page;
+    const { html_content, url, title } = page;
     
     // Check content type requested (html or text)
     const format = req.query.format || 'html';
     
-    // Decompress content
-    const decompressedBuffer = await decompressData(compressed_content);
-    const content = decompressedBuffer.toString('utf8');
-    
     if (format === 'text') {
       // Strip HTML for text-only view
-      const textContent = content.replace(/<[^>]*>/g, ' ')
+      const textContent = html_content.replace(/<[^>]*>/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
       res.json({ 
@@ -96,7 +100,7 @@ router.get('/content/:id', async (req, res) => {
       });
     } else {
       // Return full HTML
-      res.send(content);
+      res.send(html_content);
     }
   } catch (error) {
     console.error('Content retrieval error:', error);
@@ -113,11 +117,6 @@ router.get('/stats', async (req, res) => {
     const stats = {
       totalPages: parseInt(dbStats.total_pages || 0),
       totalSizeRaw: formatSize(parseInt(dbStats.total_size_raw || 0)),
-      totalSizeCompressed: formatSize(parseInt(dbStats.total_size_compressed || 0)),
-      compressionRatio: getCompressionRatio(
-        parseInt(dbStats.total_size_raw || 0), 
-        parseInt(dbStats.total_size_compressed || 0)
-      ),
       lastCrawlDate: dbStats.last_crawl_date,
       topTopics: dbStats.topTopics || [],
       queueStatus: dbStats.queue || {}
@@ -177,7 +176,7 @@ router.post('/maintenance', async (req, res) => {
 // Download database endpoint
 router.get('/download-db', (req, res) => {
   try {
-    const dbPath = path.join(__dirname, 'data', 'worldend_archive.db');
+    const dbPath = path.join(__dirname, 'data', 'worldend_archive.json');
     
     // Check if database exists
     if (!fs.existsSync(dbPath)) {
@@ -195,8 +194,8 @@ router.get('/download-db', (req, res) => {
     
     // For HEAD requests, just return headers without starting download
     if (req.method === 'HEAD') {
-      res.setHeader('Content-Type', 'application/octet-stream');
-      res.setHeader('Content-Disposition', 'attachment; filename=worldend_archive.db');
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', 'attachment; filename=worldend_archive.json');
       res.setHeader('Content-Length', fileSizeInBytes);
       res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
       return res.end();
@@ -213,8 +212,8 @@ router.get('/download-db', (req, res) => {
     isDbDownloading = true;
     
     // Set headers for download
-    res.setHeader('Content-Type', 'application/octet-stream');
-    res.setHeader('Content-Disposition', 'attachment; filename=worldend_archive.db');
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', 'attachment; filename=worldend_archive.json');
     res.setHeader('Content-Length', fileSizeInBytes);
     res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
     res.setHeader('Transfer-Encoding', 'chunked');
@@ -266,7 +265,7 @@ router.get('/crawler-stats', async (req, res) => {
     const dbStats = await getStats();
     
     // Check if database file exists and get its size
-    const dbPath = path.join(__dirname, 'data', 'worldend_archive.db');
+    const dbPath = path.join(__dirname, 'data', 'worldend_archive.json');
     let fileSizeInBytes = 0;
     let dbFileExists = false;
     
@@ -355,12 +354,6 @@ router.get('/crawler-stats', async (req, res) => {
         totalPages: parseInt(dbStats.total_pages || 0),
         totalSizeRaw: formatSize(parseInt(dbStats.total_size_raw || 0)),
         totalSizeRawBytes: parseInt(dbStats.total_size_raw || 0),
-        totalSizeCompressed: formatSize(parseInt(dbStats.total_size_compressed || 0)),
-        totalSizeCompressedBytes: parseInt(dbStats.total_size_compressed || 0),
-        compressionRatio: getCompressionRatio(
-          parseInt(dbStats.total_size_raw || 0), 
-          parseInt(dbStats.total_size_compressed || 0)
-        ),
         lastCrawlDate: dbStats.last_crawl_date,
         topTopics: dbStats.topTopics || [],
         queueStatus: dbStats.queue || {}

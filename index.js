@@ -4,13 +4,12 @@
  */
 
 require('dotenv').config();
-const { initializeDatabase, getStats, saveCrawlerStats } = require('./database');
+const { initializeDatabase, getStats, saveCrawlerStats } = require('./jsonDatabase');
 const { startCrawler, getRecommendedSeeds, CONFIG, getQueueSize } = require('./crawler');
 const api = require('./api');
 const path = require('path');
 const fs = require('fs');
 const express = require('express');
-const { Database } = require('sqlite3');
 const axios = require('axios');
 
 // Configuration
@@ -37,7 +36,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // API routes - simplified to only provide database download
 app.get('/api/download-db', (req, res) => {
   try {
-    const dbPath = path.join(__dirname, 'data', 'worldend_archive.db');
+    const dbPath = path.join(__dirname, 'data', 'worldend_archive.json');
     
     // Check if database exists
     if (!fs.existsSync(dbPath)) {
@@ -49,8 +48,8 @@ app.get('/api/download-db', (req, res) => {
     const fileSizeInBytes = stats.size;
     
     // Set headers for download
-    res.setHeader('Content-Type', 'application/octet-stream');
-    res.setHeader('Content-Disposition', 'attachment; filename=worldend_archive.db');
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', 'attachment; filename=worldend_archive.json');
     res.setHeader('Content-Length', fileSizeInBytes);
     
     // Create read stream and pipe to response
@@ -199,7 +198,7 @@ function updateCrawlerStats(additionalStats = {}) {
  */
 async function checkDatabaseSizeLimit() {
   try {
-    const dbPath = path.join(__dirname, 'data', 'worldend_archive.db');
+    const dbPath = path.join(__dirname, 'data', 'worldend_archive.json');
     if (!fs.existsSync(dbPath)) {
       return false;
     }

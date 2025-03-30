@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WorldEndArchive - Standalone Reader</title>
+  <style>
+    :root {
+      --primary-bg: #0c0c0c;
+      --secondary-bg: #151515;
+      --text-color: #33ff33;
+      --highlight-color: #ff8c33;
+      --border-color: rgba(51, 255, 51, 0.3);
+      --item-hover: rgba(51, 255, 51, 0.1);
+    }
+    
+    body {
+      font-family: monospace;
+      background-color: var(--primary-bg);
+      color: var(--text-color);
+      margin: 0;
+      padding: 0;
+      line-height: 1.6;
+      overflow-x: hidden;
+      min-height: 100vh;
+    }
+    
+    #app {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    header {
+      background-color: var(--secondary-bg);
+      padding: 1.5rem;
+      border-bottom: 1px solid var(--border-color);
+      text-align: center;
+    }
+    
+    .title {
+      font-size: 2rem;
+      color: var(--highlight-color);
+      margin: 0 0 1rem 0;
+      text-shadow: 0 0 10px rgba(255, 140, 51, 0.5);
+    }
+    
+    .subtitle {
+      font-size: 1rem;
+      color: var(--text-color);
+      margin: 0;
+    }
+
+    .main-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 2rem;
+      max-width: 1200px;
+      margin: 0 auto;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    
+    .file-upload {
+      margin-bottom: 2rem;
+      text-align: center;
+    }
+    
+    .hidden {
+      display: none;
+    }
+    
+    .file-upload-label {
+      display: inline-block;
+      padding: 0.8rem 1.5rem;
+      border: 1px solid var(--text-color);
+      border-radius: 3px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    
+    .file-upload-label:hover {
+      background-color: rgba(51, 255, 51, 0.1);
+    }
+    
+    .search-container {
+      margin-bottom: 2rem;
+    }
+    
+    .search-box {
+      display: flex;
+      margin-bottom: 1rem;
+    }
+    
+    .search-input {
+      flex: 1;
+      background-color: var(--secondary-bg);
+      border: 1px solid var(--border-color);
+      padding: 0.8rem;
+      color: var(--text-color);
+      font-family: monospace;
+      font-size: 1rem;
+    }
+    
+    .search-button {
+      background-color: var(--secondary-bg);
+      border: 1px solid var(--text-color);
+      color: var(--text-color);
+      padding: 0.8rem 1.5rem;
+      margin-left: 0.5rem;
+      font-family: monospace;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    
+    .search-button:hover {
+      background-color: var(--item-hover);
+    }
+    
+    .topic-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    
+    .topic-filter {
+      padding: 0.4rem 0.8rem;
+      border: 1px solid var(--border-color);
+      border-radius: 3px;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    
+    .topic-filter:hover {
+      background-color: var(--item-hover);
+    }
+    
+    .topic-filter.active {
+      background-color: var(--text-color);
+      color: var(--primary-bg);
+    }
+    
+    .results-container {
+      flex: 1;
+    }
+    
+    .result-item {
+      padding: 1rem;
+      border: 1px solid var(--border-color);
+      margin-bottom: 1rem;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    
+    .result-item:hover {
+      background-color: var(--item-hover);
+    }
+    
+    .result-title {
+      font-size: 1.2rem;
+      color: var(--highlight-color);
+      margin: 0 0 0.5rem 0;
+    }
+    
+    .result-url {
+      font-size: 0.9rem;
+      color: rgba(51, 255, 51, 0.7);
+      margin-bottom: 0.5rem;
+      word-break: break-all;
+    }
+    
+    .result-description {
+      font-size: 0.9rem;
+      color: rgba(255, 255, 255, 0.7);
+      margin-bottom: 0.5rem;
+      line-height: 1.4;
+    }
+    
+    .result-date {
+      font-size: 0.8rem;
+      color: rgba(51, 255, 51, 0.5);
+      margin-bottom: 0.5rem;
+    }
+    
+    .result-topics {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+    
+    .result-topic {
+      font-size: 0.8rem;
+      padding: 0.2rem 0.5rem;
+      border: 1px solid var(--border-color);
+      border-radius: 3px;
+    }
+    
+    .content-viewer {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: var(--primary-bg);
+      z-index: 1000;
+      display: none;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    
+    .content-header {
+      background-color: var(--secondary-bg);
+      padding: 1rem;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .content-title {
+      font-size: 1.2rem;
+      color: var(--highlight-color);
+      margin: 0;
+      flex: 1;
+      word-break: break-all;
+    }
+    
+    .close-button {
+      background: transparent;
+      border: 1px solid var(--text-color);
+      color: var(--text-color);
+      padding: 0.4rem 0.8rem;
+      cursor: pointer;
+      margin-left: 1rem;
+    }
+    
+    .content-body {
+      flex: 1;
+      padding: 1rem;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+      white-space: pre-wrap;
+    }
+    
+    .content-iframe {
+      flex: 1;
+      border: none;
+      width: 100%;
+      height: 100%;
+      background-color: white;
+    }
+    
+    .stats-container {
+      margin-top: 2rem;
+      border-top: 1px solid var(--border-color);
+      padding-top: 1rem;
+    }
+    
+    .stats-title {
+      font-size: 1.2rem;
+      color: var(--highlight-color);
+      margin-bottom: 1rem;
+    }
+    
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 1rem;
+    }
+    
+    .stat-box {
+      border: 1px solid var(--border-color);
+      padding: 1rem;
+    }
+    
+    .stat-label {
+      font-size: 0.9rem;
+      color: rgba(51, 255, 51, 0.7);
+      margin-bottom: 0.5rem;
+    }
+    
+    .stat-value {
+      font-size: 1.2rem;
+      color: var(--highlight-color);
+    }
+    
+    /* Loading animation */
+    .loading {
+      text-align: center;
+      padding: 2rem;
+    }
+    
+    .loading:after {
+      content: '.';
+      animation: dots 1.5s steps(5, end) infinite;
+    }
+    
+    @keyframes dots {
+      0%, 20% { color: rgba(0,0,0,0); text-shadow: .25em 0 0 rgba(0,0,0,0), .5em 0 0 rgba(0,0,0,0); }
+      40% { color: var(--text-color); text-shadow: .25em 0 0 rgba(0,0,0,0), .5em 0 0 rgba(0,0,0,0); }
+      60% { text-shadow: .25em 0 0 var(--text-color), .5em 0 0 rgba(0,0,0,0); }
+      80%, 100% { text-shadow: .25em 0 0 var(--text-color), .5em 0 0 var(--text-color); }
+    }
+    
+    /* CRT effect */
+    body::before {
+      content: "";
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(to bottom, rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
+      background-size: 100% 4px;
+      z-index: 2000;
+      pointer-events: none;
+      opacity: 0.15;
+    }
+
+    body::after {
+      content: "";
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle, transparent 50%, black 150%);
+      z-index: 2001;
+      pointer-events: none;
+      opacity: 0.4;
+    }
+    
+    /* Mobile responsiveness */
+    @media (max-width: 768px) {
+      .main-content {
+        padding: 1rem;
+      }
+      
+      .stats-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1 class="title">WorldEndArchive</h1>
+      <p class="subtitle">Standalone Knowledge Retrieval System</p>
+    </header>
+    
+    <div class="main-content">
+      <div class="file-upload">
+        <label for="db-file" class="file-upload-label">
+          <span id="file-upload-text">Load Archive File (.json)</span>
+        </label>
+        <input type="file" id="db-file" class="hidden" accept=".json">
+      </div>
+      
+      <div class="search-container hidden" id="search-container">
+        <div class="search-box">
+          <input type="text" class="search-input" id="search-input" placeholder="Search for knowledge...">
+          <button class="search-button" id="search-button">Search</button>
+        </div>
+        
+        <div class="topic-filters" id="topic-filters">
+          <!-- Topics will be added dynamically -->
+        </div>
+      </div>
+      
+      <div class="results-container" id="results-container">
+        <div id="initial-message">
+          <h2>Welcome to WorldEndArchive</h2>
+          <p>Please load a WorldEndArchive database file to begin.</p>
+          <p>If you don't have one, you can create one using the crawler application.</p>
+        </div>
+        <div id="results-list"></div>
+        <div id="loading-indicator" class="loading hidden">Loading results</div>
+      </div>
+      
+      <div class="stats-container hidden" id="stats-container">
+        <h2 class="stats-title">Archive Statistics</h2>
+        <div class="stats-grid" id="stats-grid">
+          <!-- Stats will be added dynamically -->
+        </div>
+      </div>
+    </div>
+    
+    <div class="content-viewer" id="content-viewer">
+      <div class="content-header">
+        <h3 class="content-title" id="content-title"></h3>
+        <button class="close-button" id="close-button">Close</button>
+      </div>
+      <iframe class="content-iframe" id="content-iframe"></iframe>
+    </div>
+  </div>
+  
+  <script>
+    // Global state
+    const state = {
+      database: null,
+      activeTopics: [],
+      searchQuery: '',
+      currentPage: 1,
+      resultsPerPage: 20
+    };
+    
+    // DOM Elements
+    const elements = {
+      fileInput: document.getElementById('db-file'),
+      fileUploadText: document.getElementById('file-upload-text'),
+      searchContainer: document.getElementById('search-container'),
+      searchInput: document.getElementById('search-input'),
+      searchButton: document.getElementById('search-button'),
+      topicFilters: document.getElementById('topic-filters'),
+      resultsContainer: document.getElementById('results-container'),
+      initialMessage: document.getElementById('initial-message'),
+      resultsList: document.getElementById('results-list'),
+      loadingIndicator: document.getElementById('loading-indicator'),
+      statsContainer: document.getElementById('stats-container'),
+      statsGrid: document.getElementById('stats-grid'),
+      contentViewer: document.getElementById('content-viewer'),
+      contentTitle: document.getElementById('content-title'),
+      contentIframe: document.getElementById('content-iframe'),
+      closeButton: document.getElementById('close-button')
+    };
+    
+    // Event Listeners
+    elements.fileInput.addEventListener('change', handleFileUpload);
+    elements.searchButton.addEventListener('click', performSearch);
+    elements.searchInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') performSearch();
+    });
+    elements.closeButton.addEventListener('click', closeContentViewer);
+    
+    // Topic filters will be set up dynamically
+    
+    // File upload handler
+    async function handleFileUpload(e) {
+      try {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        elements.fileUploadText.textContent = `Loading ${file.name}...`;
+        elements.loadingIndicator.classList.remove('hidden');
+        elements.initialMessage.classList.add('hidden');
+        
+        const text = await readFileAsText(file);
+        
+        try {
+          state.database = JSON.parse(text);
+          console.log('Database loaded successfully');
+          
+          elements.fileUploadText.textContent = `${file.name} (loaded)`;
+          elements.searchContainer.classList.remove('hidden');
+          elements.statsContainer.classList.remove('hidden');
+          
+          // Setup topics
+          setupTopicFilters();
+          
+          // Show stats
+          updateStats();
+          
+          // Run initial search
+          performSearch();
+        } catch (parseError) {
+          console.error('Error parsing JSON:', parseError);
+          elements.fileUploadText.textContent = 'Error: Invalid JSON file';
+          elements.initialMessage.classList.remove('hidden');
+          elements.initialMessage.innerHTML = '<h2>Error</h2><p>The selected file is not a valid WorldEndArchive JSON database.</p>';
+        }
+      } catch (error) {
+        console.error('Error handling file upload:', error);
+        elements.fileUploadText.textContent = 'Error loading file';
+      } finally {
+        elements.loadingIndicator.classList.add('hidden');
+      }
+    }
+    
+    // Helper function to read file as text
+    function readFileAsText(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (event) => resolve(event.target.result);
+        reader.onerror = reject;
+        reader.readAsText(file);
+      });
+    }
+    
+    // Setup topic filters based on available topics
+    function setupTopicFilters() {
+      // Extract unique topics
+      const topicSet = new Set();
+      
+      if (state.database) {
+        // Check if we have direct topics property in pages
+        if (state.database.pages && state.database.pages.some(p => p.topics)) {
+          // Extract from comma-separated topics
+          state.database.pages.forEach(page => {
+            if (page.topics) {
+              const topicList = page.topics.split(',').map(t => t.trim());
+              topicList.forEach(topic => {
+                if (topic) topicSet.add(topic);
+              });
+            }
+          });
+        }
+        // Fallback to page_topics array if needed
+        else if (state.database.page_topics) {
+          state.database.page_topics.forEach(topic => {
+            topicSet.add(topic.topic);
+          });
+        }
+      }
+      
+      // Clear existing filters
+      elements.topicFilters.innerHTML = '';
+      
+      // Add filter for each topic
+      Array.from(topicSet).sort().forEach(topic => {
+        const topicElement = document.createElement('div');
+        topicElement.className = 'topic-filter';
+        topicElement.dataset.topic = topic;
+        topicElement.textContent = topic.charAt(0).toUpperCase() + topic.slice(1);
+        
+        topicElement.addEventListener('click', () => {
+          topicElement.classList.toggle('active');
+          
+          if (topicElement.classList.contains('active')) {
+            state.activeTopics.push(topic);
+          } else {
+            state.activeTopics = state.activeTopics.filter(t => t !== topic);
+          }
+          
+          performSearch();
+        });
+        
+        elements.topicFilters.appendChild(topicElement);
+      });
+    }
+    
+    // Update stats display
+    function updateStats() {
+      if (!state.database) return;
+      
+      const stats = {
+        'Total Pages': state.database.pages ? state.database.pages.length : 0,
+        'Topics': state.database.page_topics ? new Set(state.database.page_topics.map(t => t.topic)).size : 0,
+        'Queue Size': state.database.crawl_queue ? state.database.crawl_queue.length : 0
+      };
+      
+      // Add settings if available
+      if (state.database.settings) {
+        if (state.database.settings.total_size_raw) {
+          stats['Content Size'] = formatBytes(parseInt(state.database.settings.total_size_raw));
+        }
+        
+        if (state.database.settings.last_crawl_date) {
+          stats['Last Crawl'] = new Date(state.database.settings.last_crawl_date).toLocaleDateString();
+        }
+      }
+      
+      // Clear existing stats
+      elements.statsGrid.innerHTML = '';
+      
+      // Add stat boxes
+      Object.entries(stats).forEach(([label, value]) => {
+        const statBox = document.createElement('div');
+        statBox.className = 'stat-box';
+        
+        const statLabel = document.createElement('div');
+        statLabel.className = 'stat-label';
+        statLabel.textContent = label;
+        
+        const statValue = document.createElement('div');
+        statValue.className = 'stat-value';
+        statValue.textContent = value;
+        
+        statBox.appendChild(statLabel);
+        statBox.appendChild(statValue);
+        elements.statsGrid.appendChild(statBox);
+      });
+    }
+    
+    // Format bytes to human readable format
+    function formatBytes(bytes, decimals = 2) {
+      if (bytes === 0) return '0 Bytes';
+      
+      const k = 1024;
+      const dm = decimals < 0 ? 0 : decimals;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+      
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+    }
+    
+    // Perform search
+    function performSearch() {
+      if (!state.database || !state.database.pages) {
+        return;
+      }
+      
+      // Update search query
+      state.searchQuery = elements.searchInput.value.toLowerCase().trim();
+      
+      // Show loading
+      elements.loadingIndicator.classList.remove('hidden');
+      elements.resultsList.innerHTML = '';
+      
+      // Filter pages based on search query and topics
+      let results = state.database.pages;
+      
+      // Apply topic filters if any are active
+      if (state.activeTopics.length > 0) {
+        results = results.filter(page => {
+          // Check if the page has the selected topics
+          let pageTopics = [];
+          
+          // Handle both storage formats
+          if (page.topics) {
+            // New format with comma-separated list
+            pageTopics = page.topics.split(',').map(t => t.trim());
+          } else if (state.database.page_topics) {
+            // Old format with page_topics relation
+            pageTopics = state.database.page_topics
+              .filter(pt => pt.page_id === page.id)
+              .map(pt => pt.topic);
+          }
+          
+          // Must have all selected topics
+          return state.activeTopics.every(topic => pageTopics.includes(topic));
+        });
+      }
+      
+      // Apply text search if query is provided
+      if (state.searchQuery) {
+        results = results.filter(page => {
+          // Check title and URL
+          const titleMatch = page.title && page.title.toLowerCase().includes(state.searchQuery);
+          const urlMatch = page.url && page.url.toLowerCase().includes(state.searchQuery);
+          const descMatch = page.description && page.description.toLowerCase().includes(state.searchQuery);
+          
+          return titleMatch || urlMatch || descMatch;
+        });
+      }
+      
+      // Sort by date (newest first)
+      results.sort((a, b) => {
+        return new Date(b.date_archived) - new Date(a.date_archived);
+      });
+      
+      // Display results
+      displayResults(results);
+    }
+    
+    // Display search results
+    function displayResults(results) {
+      // Hide loading
+      elements.loadingIndicator.classList.add('hidden');
+      
+      // Clear previous results
+      elements.resultsList.innerHTML = '';
+      
+      if (results.length === 0) {
+        elements.resultsList.innerHTML = '<div class="no-results">No results found</div>';
+        return;
+      }
+      
+      // Create result items
+      results.slice(0, state.resultsPerPage).forEach(page => {
+        const resultItem = document.createElement('div');
+        resultItem.className = 'result-item';
+        resultItem.dataset.id = page.id;
+        
+        const title = document.createElement('h3');
+        title.className = 'result-title';
+        title.textContent = page.title || 'Untitled';
+        
+        const url = document.createElement('div');
+        url.className = 'result-url';
+        url.textContent = page.url;
+        
+        const description = document.createElement('div');
+        description.className = 'result-description';
+        description.textContent = page.description || '';
+        
+        const date = document.createElement('div');
+        date.className = 'result-date';
+        date.textContent = new Date(page.date_archived).toLocaleDateString();
+        
+        const topicsContainer = document.createElement('div');
+        topicsContainer.className = 'result-topics';
+        
+        // Handle topics (either from direct property or from page_topics relation)
+        let pageTopics = [];
+        if (page.topics) {
+          // Direct topics property (comma-separated list)
+          pageTopics = page.topics.split(',').map(t => t.trim()).filter(t => t);
+        } else {
+          // Get topics from page_topics relation (older format)
+          pageTopics = state.database.page_topics
+            ? state.database.page_topics
+                .filter(pt => pt.page_id === page.id)
+                .map(pt => pt.topic)
+            : [];
+        }
+        
+        // Add topic badges
+        pageTopics.forEach(topic => {
+          const topicBadge = document.createElement('span');
+          topicBadge.className = 'result-topic';
+          topicBadge.textContent = topic;
+          topicsContainer.appendChild(topicBadge);
+        });
+        
+        resultItem.appendChild(title);
+        resultItem.appendChild(url);
+        resultItem.appendChild(description);
+        resultItem.appendChild(date);
+        resultItem.appendChild(topicsContainer);
+        
+        // Add click event to view content
+        resultItem.addEventListener('click', () => {
+          viewContent(page.id);
+        });
+        
+        elements.resultsList.appendChild(resultItem);
+      });
+    }
+    
+    // View content of a page
+    function viewContent(id) {
+      if (!state.database || !state.database.pages) return;
+      
+      const page = state.database.pages.find(p => p.id === parseInt(id));
+      
+      if (!page) {
+        console.error('Page not found:', id);
+        return;
+      }
+      
+      // Set title
+      elements.contentTitle.textContent = page.title || page.url;
+      
+      // Display the HTML content directly
+      if (page.html_content) {
+        // Create HTML document from the content
+        elements.contentIframe.srcdoc = page.html_content;
+      } else {
+        // No content available
+        elements.contentIframe.srcdoc = `
+          <html>
+            <head>
+              <style>
+                body {
+                  font-family: monospace;
+                  margin: 20px;
+                  line-height: 1.6;
+                  color: #333;
+                }
+                h1 { color: #ff8c33; }
+                .description { 
+                  background-color: #f5f5f5;
+                  padding: 10px;
+                  border-left: 3px solid #ff8c33;
+                  margin: 20px 0;
+                }
+              </style>
+            </head>
+            <body>
+              <h1>${page.title || 'Untitled'}</h1>
+              ${page.description ? `<div class="description">${page.description}</div>` : ''}
+              <p>URL: <a href="${page.url}" target="_blank">${page.url}</a></p>
+              <p>Date archived: ${new Date(page.date_archived).toLocaleString()}</p>
+              <p>Topics: ${page.topics || 'None'}</p>
+              <h2>No HTML Content Available</h2>
+              <p>The full HTML content for this page was not found in the archive.</p>
+            </body>
+          </html>
+        `;
+      }
+      
+      // Show viewer
+      elements.contentViewer.style.display = 'flex';
+    }
+    
+    // Close content viewer
+    function closeContentViewer() {
+      elements.contentViewer.style.display = 'none';
+      elements.contentIframe.src = '';
+    }
+  </script>
+</body>
+</html> 

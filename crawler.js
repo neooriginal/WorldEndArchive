@@ -13,13 +13,9 @@ const {
   markUrlInProgress,
   markUrlFailed,
   urlExists,
-  saveNewPage, 
-  getExistingUrls, 
-  saveQueuedUrl, 
-  getNextQueuedUrls, 
-  markQueuedUrlProcessed 
-} = require('./database');
-const { compressData } = require('./compression');
+  queueExists,
+  database  // Import the database object for direct access
+} = require('./jsonDatabase');
 const { classifyContent } = require('./classifier');
 
 // Configuration settings
@@ -340,7 +336,7 @@ async function crawlPage(url, parentUrl, depth) {
     
     console.log(`Content classified into ${topicCount} topics: ${Object.keys(topics).join(', ')}`);
     
-    // Store the content directly without compression
+    // Store the content as plain text HTML
     try {
       // Create hash for deduplication
       const contentHash = crypto.createHash('sha256').update(htmlContent).digest('hex');
@@ -349,9 +345,8 @@ async function crawlPage(url, parentUrl, depth) {
       await insertPage(
         url, 
         title, 
-        Buffer.from(htmlContent), 
+        htmlContent, // Store as plain text HTML
         contentHash,
-        htmlContent.length, 
         htmlContent.length,
         topics
       );
@@ -509,10 +504,8 @@ async function processSinglePage(url, parentUrl, depth, onPageProcessed) {
  */
 async function getQueueSize() {
   try {
-    const db = require('better-sqlite3')(path.join(CONFIG.dataDir, 'worldend_archive.db'));
-    const result = db.prepare('SELECT COUNT(*) as count FROM crawl_queue WHERE status = \'pending\'').get();
-    db.close();
-    return result.count;
+    // Get queue size directly from in-memory data structure
+    return database.crawl_queue.filter(item => item.status === 'pending').length;
   } catch (error) {
     console.error('Error getting queue size:', error);
     return 0;

@@ -60,7 +60,7 @@ The internet contains humanity's accumulated wisdom, but its accessibility depen
 - **🔎 Full-Text Search**: Search archived content by keywords or topics
 - **🖥️ Post-Apocalyptic UI**: Terminal-inspired interface with CRT effects and nuclear aesthetics
 - **🔌 Offline Operation**: Works entirely offline once content is archived
-- **🗄️ Persistent Storage**: SQLite3 database for reliable, portable storage
+- **🗄️ Persistent Storage**: JSON file for reliable, portable storage
 
 ## 🏗️ System Architecture
 
@@ -68,7 +68,7 @@ WorldEndArchive uses a two-component architecture:
 
 1. **Crawler Component** (`Main Application`)
    - Handles web crawling and content archiving
-   - Builds and maintains the SQLite database
+   - Builds and maintains the JSON database
    - Provides database download functionality
    - Runs as a Node.js application
 
@@ -105,6 +105,8 @@ This separation ensures that the knowledge archiving process can run on a powerf
    cp .env.example .env
    ```
    Edit the `.env` file to adjust crawling parameters as needed.
+
+> **Note:** As of the latest version, WorldEndArchive now uses a JSON file for storage instead of SQLite. This makes the application more portable and eliminates the need for binary dependencies.
 
 ## 🔨 Usage
 
