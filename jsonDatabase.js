@@ -225,19 +225,45 @@ function addToQueue(url, parentUrl, depth, priority = 0) {
 
 // Get the next batch of URLs from the queue
 function getNextBatchFromQueue(batchSize, maxAttempts = 3) {
-  return database.crawl_queue
+  // Create a map to track selected domains to limit URLs per domain in a batch
+  const domainCounts = new Map();
+  const maxPerDomain = 2; // Max URLs per domain in a single batch
+  
+  // Sort and filter the queue first
+  const sortedQueue = database.crawl_queue
     .filter(item => item.status === 'pending' && item.attempts < maxAttempts)
     .sort((a, b) => {
       // Sort by priority (desc) then depth (asc)
       if (b.priority !== a.priority) return b.priority - a.priority;
       return a.depth - b.depth;
-    })
-    .slice(0, batchSize)
-    .map(item => ({
-      url: item.url,
-      parent_url: item.parent_url,
-      depth: item.depth
-    }));
+    });
+
+  // Select URLs while respecting domain limits
+  const selectedItems = [];
+  
+  for (const item of sortedQueue) {
+    if (selectedItems.length >= batchSize) break;
+    
+    try {
+      const domain = new URL(item.url).hostname;
+      const domainCount = domainCounts.get(domain) || 0;
+      
+      if (domainCount < maxPerDomain) {
+        selectedItems.push(item);
+        domainCounts.set(domain, domainCount + 1);
+      }
+    } catch (e) {
+      // If URL is invalid, still include it (will be filtered out later)
+      selectedItems.push(item);
+    }
+  }
+  
+  // Return the selected items
+  return selectedItems.slice(0, batchSize).map(item => ({
+    url: item.url,
+    parent_url: item.parent_url,
+    depth: item.depth
+  }));
 }
 
 // Mark URLs as in progress

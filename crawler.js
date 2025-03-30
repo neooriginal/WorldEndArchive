@@ -17,14 +17,16 @@ const {
   database  // Import the database object for direct access
 } = require('./jsonDatabase');
 const { classifyContent } = require('./classifier');
+const pQueue = require('p-queue').default;
 
 // Configuration settings
 const CONFIG = {
   // Crawling parameters
   maxDepth: 3,                    // Maximum depth to crawl
-  concurrentRequests: 10,          // Number of concurrent requests
-  requestTimeout: 1000,          // Request timeout in ms
-  requestDelay: 100,              // Delay between batches in ms
+  concurrentRequests: 10,         // Number of concurrent requests
+  maxConcurrentRequestsPerDomain: 2, // Limit requests per domain
+  requestTimeout: 15000,          // Increased timeout to 15 seconds (was 1000)
+  requestDelay: 500,              // Increased delay between batches (was 100)
   respectRobotsTxt: true,         // Whether to respect robots.txt
   humanuserAgents: [
     // Chrome
@@ -299,168 +301,212 @@ async function crawlPage(url, parentUrl, depth) {
       return;
     }
     
-    // Fetch page with retry logic
-    let response;
-    let retries = 3;
-    
-    while (retries > 0) {
-      try {
-        response = await axios.get(url, {
-          timeout: CONFIG.requestTimeout,
-          maxContentLength: CONFIG.maxPageSize,
-          headers: {
-            'User-Agent': CONFIG.humanuserAgents[Math.floor(Math.random() * CONFIG.humanuserAgents.length)],
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
-          },
-          responseType: 'arraybuffer',  // Use arraybuffer to handle binary content
-          validateStatus: status => status < 500 // Accept all status codes below 500 to handle them ourselves
-        });
-        break; // Success, exit retry loop
-      } catch (e) {
-        retries--;
-        if (retries === 0) {
-          throw e; // Re-throw if all retries failed
-        }
-        console.log(`Retry ${3-retries}/3 for ${url} after error: ${e.message}`);
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait before retry
-      }
-    }
-    
-    // Handle HTTP error codes, but only mark 403, 401, 410 as permanently failed
-    if (response.status !== 200) {
-      const errorMessage = `HTTP error: ${response.status}`;
-      console.log(`Skipping (${errorMessage}): ${url}`);
-      
-      // Only mark permanent errors as failed, others could be temporary
-      if ([401, 403, 410].includes(response.status)) {
-        markUrlFailed(url, errorMessage);
-      } else {
-        // For other errors (like 429, 500, etc), we'll add back to queue with a delay if depth allows
-        if (depth < CONFIG.maxDepth) {
-          console.log(`Re-queuing ${url} for later retry due to temporary error`);
-          await addToQueue(url, parentUrl, depth, 1); // Lower priority for retry
-        }
-      }
+    // Get domain for rate limiting
+    const domain = extractDomain(url);
+    if (!domain) {
+      console.log(`Skipping (invalid URL): ${url}`);
+      markUrlFailed(url, "Invalid URL");
       return;
     }
     
-    // Determine content type
-    const contentType = response.headers['content-type'] || '';
+    // Use domain-specific rate limiter
+    const limiter = getDomainLimiter(domain);
     
-    // Skip non-HTML content
-    if (!CONFIG.allowedContentTypes.some(type => contentType.includes(type))) {
-      console.log(`Skipping (unsupported content type ${contentType}): ${url}`);
-      markUrlFailed(url, `Unsupported content type: ${contentType}`);
-      return;
-    }
-    
-    // Convert to utf-8 string for processing
-    const contentBuffer = Buffer.from(response.data);
-    let htmlContent;
-    
-    try {
-      // Try to decode as UTF-8 first
-      htmlContent = contentBuffer.toString('utf8');
-    } catch (e) {
-      // Fall back to latin1 if UTF-8 fails
-      htmlContent = contentBuffer.toString('latin1');
-    }
-    
-    // Extract title using cheerio
-    const $ = cheerio.load(htmlContent);
-    const title = $('title').text().trim() || url;
-    
-    // Extract text content for classification
-    const bodyText = $('body').text();
-    
-    // Skip pages with extremely short content, but extract links regardless
-    const isContentTooShort = bodyText.length < CONFIG.minContentLength;
-    
-    // Extract links regardless of content length if we haven't reached max depth
-    if (depth < CONFIG.maxDepth) {
-      const links = [];
-      
-      // Find all links
-      $('a').each((_, link) => {
-        const href = $(link).attr('href');
-        if (href) {
-          try {
-            // Convert to absolute URL
-            const absoluteUrl = new URL(href, url).toString();
-            
-            // Check if URL should be crawled
-            if (shouldCrawlUrl(absoluteUrl)) {
-              links.push(absoluteUrl);
-            }
-          } catch (e) {
-            // Invalid URL, skip
-          }
-        }
-      });
-      
-      // Add unique links to queue
-      const newLinks = [];
-      for (const link of links) {
-        if (await addToQueue(link, url, depth + 1)) {
-          newLinks.push(link);
-        }
-      }
-      
-      console.log(`Found ${links.length} links, added ${newLinks.length} new ones to queue`);
-    }
-    
-    // Skip archiving if content is too short, but we've already added the links
-    if (isContentTooShort) {
-      console.log(`Skipping (content too short): ${url}`);
-      return;
-    }
-    
-    // Classify content
-    const topics = classifyContent(
-      title, 
-      bodyText,
-      CONFIG.minTopicMatchScore,
-      CONFIG.topicWeights
-    );
-    
-    // Check if any topics matched with good confidence
-    const topicCount = Object.keys(topics).length;
-    if (topicCount < CONFIG.minTopicsRequired) {
-      console.log(`Skipping (no relevant topics found): ${url}`);
-      return;
-    }
-    
-    console.log(`Content classified into ${topicCount} topics: ${Object.keys(topics).join(', ')}`);
-    
-    // Store the content as plain text HTML
-    try {
-      // Create hash for deduplication
-      const contentHash = crypto.createHash('sha256').update(htmlContent).digest('hex');
-      
-      // Store in database with original size
-      await insertPage(
-        url, 
-        title, 
-        htmlContent, // Store as plain text HTML
-        contentHash,
-        htmlContent.length,
-        topics
-      );
-      
-      console.log(`Successfully stored ${htmlContent.length} bytes for: ${url}`);
-    } catch (storageError) {
-      console.error(`Error storing content for ${url}: ${storageError.message}`);
-      throw storageError;
-    }
-    
-    console.log(`Successfully archived: ${url}`);
+    // Add to domain-specific queue
+    return limiter.add(() => processCrawl(url, parentUrl, depth));
   } catch (error) {
-    console.error(`Error crawling ${url}: ${error.message}`);
+    console.error(`Error in crawlPage for ${url}:`, error.message);
     markUrlFailed(url, error.message);
   }
+}
+
+/**
+ * Get or create a rate limiter for a domain
+ * @param {string} domain - The domain to get a limiter for
+ * @returns {PQueue} - The rate limiter for the domain
+ */
+function getDomainLimiter(domain) {
+  if (!domainLimiters.has(domain)) {
+    domainLimiters.set(domain, new pQueue({ 
+      concurrency: CONFIG.maxConcurrentRequestsPerDomain,
+      interval: 1000,
+      intervalCap: CONFIG.maxConcurrentRequestsPerDomain
+    }));
+  }
+  return domainLimiters.get(domain);
+}
+
+// Domain-based request limiters
+const domainLimiters = new Map();
+
+/**
+ * Process the actual crawling after rate limiting
+ * @param {string} url - URL to crawl
+ * @param {string} parentUrl - Parent URL that linked to this one
+ * @param {number} depth - Current crawl depth
+ */
+async function processCrawl(url, parentUrl, depth) {
+  // Fetch page with retry logic
+  let response;
+  let retries = 3;
+  
+  while (retries > 0) {
+    try {
+      response = await axios.get(url, {
+        timeout: CONFIG.requestTimeout,
+        maxContentLength: CONFIG.maxPageSize,
+        headers: {
+          'User-Agent': CONFIG.humanuserAgents[Math.floor(Math.random() * CONFIG.humanuserAgents.length)],
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        },
+        responseType: 'arraybuffer',  // Use arraybuffer to handle binary content
+        validateStatus: status => status < 500 // Accept all status codes below 500 to handle them ourselves
+      });
+      break; // Success, exit retry loop
+    } catch (e) {
+      retries--;
+      if (retries === 0) {
+        throw e; // Re-throw if all retries failed
+      }
+      console.log(`Retry ${3-retries}/3 for ${url} after error: ${e.message}`);
+      // Add exponential backoff between retries
+      const waitTime = 1000 * Math.pow(2, 3-retries);
+      console.log(`Waiting ${waitTime}ms before next retry`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+  }
+  
+  // Handle HTTP error codes, but only mark 403, 401, 410 as permanently failed
+  if (response.status !== 200) {
+    const errorMessage = `HTTP error: ${response.status}`;
+    console.log(`Skipping (${errorMessage}): ${url}`);
+    
+    // Only mark permanent errors as failed, others could be temporary
+    if ([401, 403, 410].includes(response.status)) {
+      markUrlFailed(url, errorMessage);
+    } else {
+      // For other errors (like 429, 500, etc), we'll add back to queue with a delay if depth allows
+      if (depth < CONFIG.maxDepth) {
+        console.log(`Re-queuing ${url} for later retry due to temporary error`);
+        await addToQueue(url, parentUrl, depth, 1); // Lower priority for retry
+      }
+    }
+    return;
+  }
+  
+  // Determine content type
+  const contentType = response.headers['content-type'] || '';
+  
+  // Skip non-HTML content
+  if (!CONFIG.allowedContentTypes.some(type => contentType.includes(type))) {
+    console.log(`Skipping (unsupported content type ${contentType}): ${url}`);
+    markUrlFailed(url, `Unsupported content type: ${contentType}`);
+    return;
+  }
+  
+  // Convert to utf-8 string for processing
+  const contentBuffer = Buffer.from(response.data);
+  let htmlContent;
+  
+  try {
+    // Try to decode as UTF-8 first
+    htmlContent = contentBuffer.toString('utf8');
+  } catch (e) {
+    // Fall back to latin1 if UTF-8 fails
+    htmlContent = contentBuffer.toString('latin1');
+  }
+  
+  // Extract title using cheerio
+  const $ = cheerio.load(htmlContent);
+  const title = $('title').text().trim() || url;
+  
+  // Extract text content for classification
+  const bodyText = $('body').text();
+  
+  // Skip pages with extremely short content, but extract links regardless
+  const isContentTooShort = bodyText.length < CONFIG.minContentLength;
+  
+  // Extract links regardless of content length if we haven't reached max depth
+  if (depth < CONFIG.maxDepth) {
+    const links = [];
+    
+    // Find all links
+    $('a').each((_, link) => {
+      const href = $(link).attr('href');
+      if (href) {
+        try {
+          // Convert to absolute URL
+          const absoluteUrl = new URL(href, url).toString();
+          
+          // Check if URL should be crawled
+          if (shouldCrawlUrl(absoluteUrl)) {
+            links.push(absoluteUrl);
+          }
+        } catch (e) {
+          // Invalid URL, skip
+        }
+      }
+    });
+    
+    // Add unique links to queue
+    const newLinks = [];
+    for (const link of links) {
+      if (await addToQueue(link, url, depth + 1)) {
+        newLinks.push(link);
+      }
+    }
+    
+    console.log(`Found ${links.length} links, added ${newLinks.length} new ones to queue`);
+  }
+  
+  // Skip archiving if content is too short, but we've already added the links
+  if (isContentTooShort) {
+    console.log(`Skipping (content too short): ${url}`);
+    return;
+  }
+  
+  // Classify content
+  const topics = classifyContent(
+    title, 
+    bodyText,
+    CONFIG.minTopicMatchScore,
+    CONFIG.topicWeights
+  );
+  
+  // Check if any topics matched with good confidence
+  const topicCount = Object.keys(topics).length;
+  if (topicCount < CONFIG.minTopicsRequired) {
+    console.log(`Skipping (no relevant topics found): ${url}`);
+    return;
+  }
+  
+  console.log(`Content classified into ${topicCount} topics: ${Object.keys(topics).join(', ')}`);
+  
+  // Store the content as plain text HTML
+  try {
+    // Create hash for deduplication
+    const contentHash = crypto.createHash('sha256').update(htmlContent).digest('hex');
+    
+    // Store in database with original size
+    await insertPage(
+      url, 
+      title, 
+      htmlContent, // Store as plain text HTML
+      contentHash,
+      htmlContent.length,
+      topics
+    );
+    
+    console.log(`Successfully stored ${htmlContent.length} bytes for: ${url}`);
+  } catch (storageError) {
+    console.error(`Error storing content for ${url}: ${storageError.message}`);
+    throw storageError;
+  }
+  
+  console.log(`Successfully archived: ${url}`);
 }
 
 /**
@@ -544,17 +590,35 @@ async function startCrawler(seedUrls, callbacks = {}) {
   let additionalSeedsUsed = false;
   
   // Add seed URLs to queue with depth 0 and high priority
-  await addSeedUrlsToQueue(seedUrls);
+  const seedCount = await addSeedUrlsToQueue(seedUrls);
+  if (seedCount === 0) {
+    console.error("ERROR: No valid seed URLs were added to the queue. Crawler cannot start.");
+    return;
+  }
+  
+  console.log(`Successfully added ${seedCount} seed URLs to queue. Starting crawler...`);
+  
+  // Create overall crawler queue with higher concurrency
+  const crawlerQueue = new pQueue({ concurrency: CONFIG.concurrentRequests });
   
   // Process URLs in batches until explicitly stopped
   let running = true;
   let emptyBatchCount = 0;
+  let processed = 0;
+  let startTime = Date.now();
   
   while (running) {
     // Get queue size for reporting
     try {
       const queueSize = await getQueueSize();
       onQueueUpdate(queueSize);
+      
+      // Calculate and log crawl rate
+      const elapsedMinutes = (Date.now() - startTime) / 60000;
+      if (elapsedMinutes >= 1) {
+        const rate = processed / elapsedMinutes;
+        console.log(`Crawl rate: ${rate.toFixed(2)} pages/minute (${processed} pages in ${elapsedMinutes.toFixed(2)} minutes)`);
+      }
       
       // If queue is nearly empty, reload seed URLs
       if (queueSize < 5) {
@@ -573,7 +637,10 @@ async function startCrawler(seedUrls, callbacks = {}) {
       console.error('Error getting queue size:', error);
     }
     
-    const batchProcessed = await processBatch(CONFIG.concurrentRequests, onPageProcessed);
+    const batchProcessed = await processBatch(CONFIG.concurrentRequests, (url, success) => {
+      if (success) processed++;
+      onPageProcessed(url, success);
+    });
     
     if (!batchProcessed) {
       emptyBatchCount++;
@@ -596,12 +663,29 @@ async function startCrawler(seedUrls, callbacks = {}) {
  * Helper function to add seed URLs to the queue
  */
 async function addSeedUrlsToQueue(seedUrls) {
+  console.log(`Adding ${seedUrls.length} seed URLs to queue...`);
+  let added = 0;
+  
   for (const url of seedUrls) {
     if (url && typeof url === 'string') {
-      const cleanedUrl = url.trim().replace(/^\s+https:/i, 'https:').replace(/^https:(?!\/\/)/, 'https://');
-      await addToQueue(cleanedUrl, null, 0, 10);  // Priority 10 for seed URLs
+      try {
+        // Validate and clean the URL
+        const cleanedUrl = url.trim().replace(/^\s+https:/i, 'https:').replace(/^https:(?!\/\/)/, 'https://');
+        
+        // Validate URL format
+        new URL(cleanedUrl); // Will throw if invalid
+        
+        // Add to queue with high priority
+        const success = await addToQueue(cleanedUrl, null, 0, 10);  // Priority 10 for seed URLs
+        if (success) added++;
+      } catch (e) {
+        console.error(`Invalid seed URL: ${url} - ${e.message}`);
+      }
     }
   }
+  
+  console.log(`Added ${added} valid seed URLs to queue`);
+  return added;
 }
 
 /**
@@ -625,13 +709,20 @@ async function processBatch(batchSize, onPageProcessed = () => {}) {
     markUrlInProgress(item.url);
   }
   
+  // Create a queue with higher concurrency for overall processing
+  const queue = new pQueue({ concurrency: CONFIG.concurrentRequests });
+  
   // Process each URL
   const promises = batch.map(item => 
-    processSinglePage(item.url, item.parent_url, item.depth, onPageProcessed)
+    queue.add(() => processSinglePage(item.url, item.parent_url, item.depth, onPageProcessed))
   );
   
-  // Wait for all to complete with timeout protection
-  await Promise.all(promises);
+  try {
+    // Wait for all to complete with timeout protection
+    await Promise.all(promises);
+  } catch (error) {
+    console.error('Error processing batch:', error);
+  }
   
   return true;
 }
