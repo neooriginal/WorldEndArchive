@@ -17,7 +17,6 @@ const {
   database  // Import the database object for direct access
 } = require('./jsonDatabase');
 const { classifyContent } = require('./classifier');
-const PQueue = require('p-queue');
 
 // Configuration settings
 const CONFIG = {
@@ -309,35 +308,56 @@ async function crawlPage(url, parentUrl, depth) {
       return;
     }
     
-    // Use domain-specific rate limiter
-    const limiter = getDomainLimiter(domain);
+    // Apply rate limiting
+    await getDomainLock(domain);
     
-    // Add to domain-specific queue
-    return limiter.add(() => processCrawl(url, parentUrl, depth));
+    // Process the crawl
+    return processCrawl(url, parentUrl, depth).finally(() => {
+      // Release the domain lock
+      releaseDomainLock(domain);
+    });
   } catch (error) {
     console.error(`Error in crawlPage for ${url}:`, error.message);
     markUrlFailed(url, error.message);
   }
 }
 
+// Simple concurrency control per domain
+const domainLocks = new Map();
+const domainCounts = new Map();
+
 /**
- * Get or create a rate limiter for a domain
- * @param {string} domain - The domain to get a limiter for
- * @returns {PQueue} - The rate limiter for the domain
+ * Get a lock for a domain
+ * @param {string} domain - The domain to get a lock for
+ * @returns {Promise<void>} - Resolves when the lock is acquired
  */
-function getDomainLimiter(domain) {
-  if (!domainLimiters.has(domain)) {
-    domainLimiters.set(domain, new PQueue({ 
-      concurrency: CONFIG.maxConcurrentRequestsPerDomain,
-      interval: 1000,
-      intervalCap: CONFIG.maxConcurrentRequestsPerDomain
-    }));
+async function getDomainLock(domain) {
+  // Initialize the domain count if it doesn't exist
+  if (!domainCounts.has(domain)) {
+    domainCounts.set(domain, 0);
   }
-  return domainLimiters.get(domain);
+  
+  // Wait until we can acquire a lock
+  while (domainCounts.get(domain) >= CONFIG.maxConcurrentRequestsPerDomain) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  
+  // Increment the count for this domain
+  domainCounts.set(domain, domainCounts.get(domain) + 1);
 }
 
-// Domain-based request limiters
-const domainLimiters = new Map();
+/**
+ * Release a lock for a domain
+ * @param {string} domain - The domain to release the lock for
+ */
+function releaseDomainLock(domain) {
+  if (domainCounts.has(domain)) {
+    const count = domainCounts.get(domain);
+    if (count > 0) {
+      domainCounts.set(domain, count - 1);
+    }
+  }
+}
 
 /**
  * Process the actual crawling after rate limiting
@@ -598,9 +618,6 @@ async function startCrawler(seedUrls, callbacks = {}) {
   
   console.log(`Successfully added ${seedCount} seed URLs to queue. Starting crawler...`);
   
-  // Create overall crawler queue with higher concurrency
-  const crawlerQueue = new PQueue({ concurrency: CONFIG.concurrentRequests });
-  
   // Process URLs in batches until explicitly stopped
   let running = true;
   let emptyBatchCount = 0;
@@ -709,12 +726,9 @@ async function processBatch(batchSize, onPageProcessed = () => {}) {
     markUrlInProgress(item.url);
   }
   
-  // Create a queue with higher concurrency for overall processing
-  const queue = new PQueue({ concurrency: CONFIG.concurrentRequests });
-  
-  // Process each URL
+  // Process the URLs concurrently with a simple approach
   const promises = batch.map(item => 
-    queue.add(() => processSinglePage(item.url, item.parent_url, item.depth, onPageProcessed))
+    processSinglePage(item.url, item.parent_url, item.depth, onPageProcessed)
   );
   
   try {
