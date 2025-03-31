@@ -24,9 +24,9 @@ const CONFIG = {
   // Crawling parameters
   maxDepth: 3,                    // Maximum depth to crawl
   concurrentRequests: 10,         // Number of concurrent requests
-  maxConcurrentRequestsPerDomain: 2, // Limit requests per domain
-  requestTimeout: 15000,          // Increased timeout to 15 seconds (was 1000)
-  requestDelay: 300,              // Decreased delay between batches (was 500)
+  maxConcurrentRequestsPerDomain: 3, // Limit requests per domain
+  requestTimeout: 10000,          // Reduced from 15s to 10s
+  requestDelay: 200,              // Reduced from 300ms to 200ms
   respectRobotsTxt: true,         // Whether to respect robots.txt
   
   // In-memory page buffer settings
@@ -98,8 +98,8 @@ const CONFIG = {
   ],
   allowedPrefix: ['http://', 'https://'],
   
-  // Max size to store (50MB)
-  maxPageSize: 50 * 1024 * 1024,
+  // Max size to store (10MB)
+  maxPageSize: 10 * 1024 * 1024,
   
   // Data directory
   dataDir: path.join(__dirname, 'data'),
@@ -110,7 +110,19 @@ const CONFIG = {
     'text/html',
     'application/xhtml+xml',
     'text/plain'
-  ]
+  ],
+  
+  // Optimized settings for large files
+  streamingThreshold: 1024 * 1024, // Start streaming at 1MB
+  maxRetries: 3,                   // Maximum number of retries
+  retryStatusCodes: [429, 500, 502, 503, 504], // Status codes to retry
+  retryBackoffFactor: 2,           // Exponential backoff factor
+  initialRetryDelay: 1000,         // Initial retry delay in ms
+  
+  // Content processing
+  maxContentLength: 500000,        // Maximum content length to process (500KB)
+  truncateContent: true,           // Whether to truncate large content
+  preserveImportantContent: true,  // Whether to preserve important content when truncating
 };
 
 // Store robots.txt data
@@ -537,12 +549,12 @@ function releaseDomainLock(domain) {
  * @param {number} depth - Current crawl depth
  */
 async function processCrawl(url, parentUrl, depth) {
-  // Fetch page with retry logic
   let response;
-  let retries = 3;
+  let retries = CONFIG.maxRetries;
   
   while (retries > 0) {
     try {
+      // Use streaming for large files
       response = await axios.get(url, {
         timeout: CONFIG.requestTimeout,
         maxContentLength: CONFIG.maxPageSize,
@@ -553,92 +565,97 @@ async function processCrawl(url, parentUrl, depth) {
           'Cache-Control': 'no-cache',
           'Pragma': 'no-cache'
         },
-        responseType: 'arraybuffer',  // Use arraybuffer to handle binary content
-        validateStatus: status => status < 500 // Accept all status codes below 500 to handle them ourselves
+        responseType: 'stream',  // Use streaming for all requests
+        validateStatus: status => status < 500
       });
-      break; // Success, exit retry loop
+      break;
     } catch (e) {
       retries--;
-      if (retries === 0) {
-        throw e; // Re-throw if all retries failed
-      }
-      console.log(`Retry ${3-retries}/3 for ${url} after error: ${e.message}`);
-      // Add exponential backoff between retries
-      const waitTime = 1000 * Math.pow(2, 3-retries);
+      if (retries === 0) throw e;
+      
+      const waitTime = CONFIG.initialRetryDelay * Math.pow(CONFIG.retryBackoffFactor, CONFIG.maxRetries - retries);
+      console.log(`Retry ${CONFIG.maxRetries-retries}/${CONFIG.maxRetries} for ${url} after error: ${e.message}`);
       console.log(`Waiting ${waitTime}ms before next retry`);
       await new Promise(resolve => setTimeout(resolve, waitTime));
     }
   }
   
-  // Handle HTTP error codes, but only mark 403, 401, 410 as permanently failed
+  // Handle HTTP error codes
   if (response.status !== 200) {
     const errorMessage = `HTTP error: ${response.status}`;
     console.log(`Skipping (${errorMessage}): ${url}`);
     
-    // Only mark permanent errors as failed, others could be temporary
     if ([401, 403, 410].includes(response.status)) {
       markUrlFailed(url, errorMessage);
-    } else {
-      // For other errors (like 429, 500, etc), we'll add back to queue with a delay if depth allows
-      if (depth < CONFIG.maxDepth) {
-        console.log(`Re-queuing ${url} for later retry due to temporary error`);
-        await addToQueue(url, parentUrl, depth, 1); // Lower priority for retry
-      }
+    } else if (depth < CONFIG.maxDepth) {
+      console.log(`Re-queuing ${url} for later retry due to temporary error`);
+      await addToQueue(url, parentUrl, depth, 1);
     }
     return;
   }
   
-  // Determine content type
+  // Process content type
   const contentType = response.headers['content-type'] || '';
-  
-  // Skip non-HTML content
   if (!CONFIG.allowedContentTypes.some(type => contentType.includes(type))) {
     console.log(`Skipping (unsupported content type ${contentType}): ${url}`);
     markUrlFailed(url, `Unsupported content type: ${contentType}`);
     return;
   }
   
-  // Convert to utf-8 string for processing
-  const contentBuffer = Buffer.from(response.data);
-  let htmlContent;
+  // Stream and process content
+  let htmlContent = '';
+  let contentSize = 0;
   
-  try {
-    // Try to decode as UTF-8 first
-    htmlContent = contentBuffer.toString('utf8');
-  } catch (e) {
-    // Fall back to latin1 if UTF-8 fails
-    htmlContent = contentBuffer.toString('latin1');
+  for await (const chunk of response.data) {
+    contentSize += chunk.length;
+    
+    // Check if we've exceeded the size limit
+    if (contentSize > CONFIG.maxContentLength) {
+      if (CONFIG.truncateContent) {
+        console.log(`Content size (${contentSize} bytes) exceeds limit, truncating...`);
+        // Keep only the first part of the content
+        htmlContent = htmlContent.substring(0, CONFIG.maxContentLength);
+        break;
+      } else {
+        console.log(`Skipping (content too large: ${contentSize} bytes): ${url}`);
+        markUrlFailed(url, `Content too large: ${contentSize} bytes`);
+        return;
+      }
+    }
+    
+    htmlContent += chunk;
   }
   
-  // Use a single cheerio instance for all operations to avoid multiple parsing
+  // Use a single cheerio instance for all operations
   const $ = cheerio.load(htmlContent);
   
-  // Extract title and body text in one pass
+  // Extract title and body text efficiently
   const title = $('title').text().trim() || url;
   
-  // Extract text content using a more optimized approach
-  // Only extract text from common content elements
-  const bodyText = $('body').find('p, h1, h2, h3, h4, h5, h6, article, section, main, div.content, div.main').text();
+  // Extract text content using optimized selectors
+  const bodyText = $('body')
+    .find('p, h1, h2, h3, h4, h5, h6, article, section, main')
+    .map((_, el) => $(el).text().trim())
+    .get()
+    .join(' ');
   
-  // Skip pages with extremely short content, but extract links regardless
-  const isContentTooShort = bodyText.length < CONFIG.minContentLength;
+  // Skip pages with extremely short content
+  if (bodyText.length < CONFIG.minContentLength) {
+    console.log(`Skipping (content too short): ${url}`);
+    return;
+  }
   
-  // Extract links regardless of content length if we haven't reached max depth
+  // Extract links if we haven't reached max depth
   let newLinks = 0;
-  
   if (depth < CONFIG.maxDepth) {
-    // More efficient link extraction
-    const links = new Set(); // Use a Set to avoid duplicate URLs
+    const links = new Set();
     
-    // Find all links
+    // More efficient link extraction
     $('a[href]').each((_, link) => {
       const href = $(link).attr('href');
       if (href) {
         try {
-          // Convert to absolute URL
           const absoluteUrl = new URL(href, url).toString();
-          
-          // Check if URL should be crawled
           if (shouldCrawlUrl(absoluteUrl)) {
             links.add(absoluteUrl);
           }
@@ -648,24 +665,16 @@ async function processCrawl(url, parentUrl, depth) {
       }
     });
     
-    // Add unique links to queue
-    const linkPromises = [];
-    for (const link of links) {
+    // Add unique links to queue in parallel
+    const linkPromises = Array.from(links).map(link => {
       const priority = calculateUrlPriority(link, depth + 1);
-      linkPromises.push(addToQueue(link, url, depth + 1, priority));
-    }
+      return addToQueue(link, url, depth + 1, priority);
+    });
     
-    // Process all links in parallel
     const results = await Promise.all(linkPromises);
     newLinks = results.filter(result => result).length;
     
     console.log(`Found ${links.size} links, added ${newLinks} new ones to queue`);
-  }
-  
-  // Skip archiving if content is too short, but we've already added the links
-  if (isContentTooShort) {
-    console.log(`Skipping (content too short): ${url}`);
-    return;
   }
   
   // Classify content
@@ -685,12 +694,10 @@ async function processCrawl(url, parentUrl, depth) {
   
   console.log(`Content classified into ${topicCount} topics: ${Object.keys(topics).join(', ')}`);
   
-  // Store the content as plain text HTML
+  // Store the content
   try {
-    // Create hash for deduplication
     const contentHash = crypto.createHash('sha256').update(htmlContent).digest('hex');
     
-    // Buffer the content for batch database insert
     await bufferPage(
       url,
       title,
