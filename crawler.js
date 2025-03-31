@@ -14,7 +14,8 @@ const {
   markUrlFailed,
   urlExists,
   queueExists,
-  database  // Import the database object for direct access
+  database,  // Import the database object for direct access
+  batchInsertPages  // Add this import
 } = require('./jsonDatabase');
 const { classifyContent } = require('./classifier');
 
@@ -25,8 +26,12 @@ const CONFIG = {
   concurrentRequests: 10,         // Number of concurrent requests
   maxConcurrentRequestsPerDomain: 2, // Limit requests per domain
   requestTimeout: 15000,          // Increased timeout to 15 seconds (was 1000)
-  requestDelay: 500,              // Increased delay between batches (was 100)
+  requestDelay: 300,              // Decreased delay between batches (was 500)
   respectRobotsTxt: true,         // Whether to respect robots.txt
+  
+  // In-memory page buffer settings
+  pageBufferSize: 100,           // Number of pages to buffer before saving to database
+  
   humanuserAgents: [
     // Chrome
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.137 Safari/537.36",
@@ -110,6 +115,92 @@ const CONFIG = {
 
 // Store robots.txt data
 const robotsTxtCache = new Map();
+
+// Create in-memory page buffer for batch database operations
+const pageBuffer = [];
+
+/**
+ * Buffer a page for batch database insert
+ * @param {string} url - Page URL
+ * @param {string} title - Page title
+ * @param {string} content - Page HTML content
+ * @param {string} contentHash - Hash for deduplication
+ * @param {number} size - Content size in bytes
+ * @param {Object} topics - Classified topics
+ */
+async function bufferPage(url, title, content, contentHash, size, topics) {
+  pageBuffer.push({
+    url,
+    title,
+    content,
+    contentHash,
+    size,
+    topics
+  });
+  
+  // If buffer reached threshold, save to database
+  if (pageBuffer.length >= CONFIG.pageBufferSize) {
+    await savePageBuffer();
+  }
+}
+
+/**
+ * Save all pages in buffer to database
+ */
+async function savePageBuffer() {
+  if (pageBuffer.length === 0) return;
+  
+  console.log(`Saving batch of ${pageBuffer.length} pages to database...`);
+  
+  try {
+    // If batchInsertPages is available, use it
+    if (typeof batchInsertPages === 'function') {
+      await batchInsertPages(pageBuffer);
+    } else {
+      // Otherwise, insert pages one by one
+      for (const page of pageBuffer) {
+        await insertPage(
+          page.url,
+          page.title,
+          page.content,
+          page.contentHash,
+          page.size,
+          page.topics
+        );
+      }
+    }
+    
+    // Clear the buffer
+    pageBuffer.length = 0;
+    console.log('Batch save completed successfully');
+  } catch (error) {
+    console.error('Error saving page buffer:', error);
+    
+    // In case of error, try to save individually
+    if (typeof batchInsertPages === 'function') {
+      console.log('Trying to save pages individually...');
+      for (let i = 0; i < pageBuffer.length; i++) {
+        try {
+          const page = pageBuffer[i];
+          await insertPage(
+            page.url,
+            page.title,
+            page.content,
+            page.contentHash,
+            page.size,
+            page.topics
+          );
+          
+          // Remove saved page from buffer
+          pageBuffer.splice(i, 1);
+          i--;
+        } catch (e) {
+          console.error(`Error saving individual page (${i}):`, e.message);
+        }
+      }
+    }
+  }
+}
 
 /**
  * Initialize crawler data directory
@@ -284,6 +375,86 @@ async function isAllowedByRobotsTxt(url) {
 }
 
 /**
+ * Calculate a priority score for a URL to optimize crawling important content first
+ * @param {string} url - URL to analyze
+ * @param {number} depth - Crawl depth
+ * @returns {number} - Priority score (higher = more important)
+ */
+function calculateUrlPriority(url, depth) {
+  try {
+    // Base priority inversely proportional to depth
+    let priority = 10 - depth * 2;
+    
+    // Parse the URL
+    const parsedUrl = new URL(url);
+    const domain = parsedUrl.hostname.toLowerCase();
+    const path = parsedUrl.pathname.toLowerCase();
+    
+    // Prioritize educational and scientific domains
+    if (domain.endsWith('.edu') || domain.endsWith('.gov') || domain.endsWith('.org')) {
+      priority += 3;
+    }
+    
+    // Prioritize domains that are more likely to contain valuable information
+    const highValueDomains = [
+      'wikipedia.org', 'wikibooks.org', 'wikihow.com',
+      'github.com', 'stackoverflow.com', 'stackexchange.com',
+      'archive.org', 'gutenberg.org', 'academia.edu',
+      'researchgate.net', 'ncbi.nlm.nih.gov', 'arxiv.org',
+      'scholar.google.com', 'sciencedirect.com', 'ieee.org',
+      'acm.org', 'nih.gov', 'cdc.gov', 'who.int',
+      'mit.edu', 'stanford.edu', 'harvard.edu',
+      'berkeley.edu', 'cambridge.org', 'oxford.ac.uk'
+    ];
+    
+    if (highValueDomains.some(d => domain.includes(d))) {
+      priority += 4;
+    }
+    
+    // Deprioritize social media, news, and entertainment domains
+    const lowValueDomains = [
+      'instagram.', 'facebook.', 'twitter.', 'tiktok.',
+      'pinterest.', 'tumblr.', 'reddit.', 'youtube.',
+      'dailymail.', 'buzzfeed.', 'cnn.', 'foxnews.',
+      'nytimes.', 'wsj.', 'telegraph.', 'guardian.'
+    ];
+    
+    if (lowValueDomains.some(d => domain.includes(d))) {
+      priority -= 5;
+    }
+    
+    // Prioritize paths that indicate educational or valuable content
+    const highValuePaths = [
+      '/wiki/', '/article/', '/science/', '/research/',
+      '/education/', '/learn/', '/tutorial/', '/guide/',
+      '/howto/', '/encyclopedia/', '/reference/',
+      '/health/', '/medicine/', '/technology/', '/engineering/'
+    ];
+    
+    if (highValuePaths.some(p => path.includes(p))) {
+      priority += 2;
+    }
+    
+    // Deprioritize paths that suggest less valuable content
+    const lowValuePaths = [
+      '/tag/', '/category/', '/author/', '/profile/',
+      '/comment/', '/forum/', '/discussion/', '/blog/',
+      '/news/', '/gossip/', '/celebrity/', '/entertainment/'
+    ];
+    
+    if (lowValuePaths.some(p => path.includes(p))) {
+      priority -= 2;
+    }
+    
+    // Ensure priority is within reasonable bounds
+    return Math.max(1, Math.min(10, priority));
+  } catch (e) {
+    // Default priority if there's an error
+    return 5;
+  }
+}
+
+/**
  * Crawl a single page
  * @param {string} url - URL to crawl
  * @param {string} parentUrl - Parent URL that linked to this one
@@ -439,22 +610,28 @@ async function processCrawl(url, parentUrl, depth) {
     htmlContent = contentBuffer.toString('latin1');
   }
   
-  // Extract title using cheerio
+  // Use a single cheerio instance for all operations to avoid multiple parsing
   const $ = cheerio.load(htmlContent);
+  
+  // Extract title and body text in one pass
   const title = $('title').text().trim() || url;
   
-  // Extract text content for classification
-  const bodyText = $('body').text();
+  // Extract text content using a more optimized approach
+  // Only extract text from common content elements
+  const bodyText = $('body').find('p, h1, h2, h3, h4, h5, h6, article, section, main, div.content, div.main').text();
   
   // Skip pages with extremely short content, but extract links regardless
   const isContentTooShort = bodyText.length < CONFIG.minContentLength;
   
   // Extract links regardless of content length if we haven't reached max depth
+  let newLinks = 0;
+  
   if (depth < CONFIG.maxDepth) {
-    const links = [];
+    // More efficient link extraction
+    const links = new Set(); // Use a Set to avoid duplicate URLs
     
     // Find all links
-    $('a').each((_, link) => {
+    $('a[href]').each((_, link) => {
       const href = $(link).attr('href');
       if (href) {
         try {
@@ -463,7 +640,7 @@ async function processCrawl(url, parentUrl, depth) {
           
           // Check if URL should be crawled
           if (shouldCrawlUrl(absoluteUrl)) {
-            links.push(absoluteUrl);
+            links.add(absoluteUrl);
           }
         } catch (e) {
           // Invalid URL, skip
@@ -472,14 +649,17 @@ async function processCrawl(url, parentUrl, depth) {
     });
     
     // Add unique links to queue
-    const newLinks = [];
+    const linkPromises = [];
     for (const link of links) {
-      if (await addToQueue(link, url, depth + 1)) {
-        newLinks.push(link);
-      }
+      const priority = calculateUrlPriority(link, depth + 1);
+      linkPromises.push(addToQueue(link, url, depth + 1, priority));
     }
     
-    console.log(`Found ${links.length} links, added ${newLinks.length} new ones to queue`);
+    // Process all links in parallel
+    const results = await Promise.all(linkPromises);
+    newLinks = results.filter(result => result).length;
+    
+    console.log(`Found ${links.size} links, added ${newLinks} new ones to queue`);
   }
   
   // Skip archiving if content is too short, but we've already added the links
@@ -510,23 +690,23 @@ async function processCrawl(url, parentUrl, depth) {
     // Create hash for deduplication
     const contentHash = crypto.createHash('sha256').update(htmlContent).digest('hex');
     
-    // Store in database with original size
-    await insertPage(
-      url, 
-      title, 
-      htmlContent, // Store as plain text HTML
+    // Buffer the content for batch database insert
+    await bufferPage(
+      url,
+      title,
+      htmlContent,
       contentHash,
       htmlContent.length,
       topics
     );
     
-    console.log(`Successfully stored ${htmlContent.length} bytes for: ${url}`);
+    console.log(`Successfully buffered ${htmlContent.length} bytes for: ${url}`);
   } catch (storageError) {
-    console.error(`Error storing content for ${url}: ${storageError.message}`);
+    console.error(`Error buffering content for ${url}: ${storageError.message}`);
     throw storageError;
   }
   
-  console.log(`Successfully archived: ${url}`);
+  console.log(`Successfully buffered: ${url}`);
 }
 
 /**
@@ -673,6 +853,12 @@ async function startCrawler(seedUrls, callbacks = {}) {
     await new Promise(resolve => setTimeout(resolve, CONFIG.requestDelay));
   }
   
+  // Save any remaining pages in the buffer before exiting
+  if (pageBuffer.length > 0) {
+    console.log(`Saving remaining ${pageBuffer.length} pages before exiting...`);
+    await savePageBuffer();
+  }
+  
   console.log('Crawler finished');
 }
 
@@ -734,6 +920,11 @@ async function processBatch(batchSize, onPageProcessed = () => {}) {
   try {
     // Wait for all to complete with timeout protection
     await Promise.all(promises);
+    
+    // If we've accumulated enough pages in the buffer, save them
+    if (pageBuffer.length >= Math.min(CONFIG.pageBufferSize / 2, 20)) {
+      await savePageBuffer();
+    }
   } catch (error) {
     console.error('Error processing batch:', error);
   }
@@ -851,5 +1042,6 @@ module.exports = {
   startCrawler,
   getRecommendedSeeds,
   getQueueSize,
-  CONFIG
+  CONFIG,
+  savePageBuffer  // Export this so it can be called manually if needed
 }; 

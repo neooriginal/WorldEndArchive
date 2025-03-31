@@ -18,6 +18,11 @@ let database = {
   settings: {}
 };
 
+// Add a throttling mechanism for database saves
+let lastSaveTime = 0;
+const MIN_SAVE_INTERVAL = 10000; // Minimum 10 seconds between saves
+let saveScheduled = false;
+
 // Initialize the database
 function initializeDatabase() {
   if (fs.existsSync(JSON_FILE_PATH)) {
@@ -81,12 +86,49 @@ function initializeNewDatabase() {
   console.log('New database initialized');
 }
 
-// Save the database to the JSON file
+// Save the database to the JSON file with throttling
 function saveDatabase() {
+  const currentTime = Date.now();
+  
+  // If it's been less than MIN_SAVE_INTERVAL since the last save, schedule a save for later
+  if (currentTime - lastSaveTime < MIN_SAVE_INTERVAL) {
+    if (!saveScheduled) {
+      saveScheduled = true;
+      const timeToWait = MIN_SAVE_INTERVAL - (currentTime - lastSaveTime);
+      console.log(`Throttling database save. Next save in ${timeToWait}ms`);
+      
+      setTimeout(() => {
+        saveScheduled = false;
+        lastSaveTime = Date.now();
+        performSave();
+      }, timeToWait);
+    }
+    return; // Skip this save, it will happen later
+  }
+  
+  // Otherwise, save immediately
+  lastSaveTime = currentTime;
+  performSave();
+}
+
+// Actual save operation
+function performSave() {
   try {
-    // Create a simplified version for storage
+    // Create a simplified version for storage, but process in chunks to reduce memory usage
     const storageData = {
-      pages: database.pages.map(page => {
+      pages: [],
+      settings: database.settings
+    };
+    
+    // Process pages in chunks of 1000 to reduce memory usage
+    const CHUNK_SIZE = 1000;
+    const totalPages = database.pages.length;
+    
+    for (let i = 0; i < totalPages; i += CHUNK_SIZE) {
+      const chunk = database.pages.slice(i, i + CHUNK_SIZE);
+      
+      // Process this chunk of pages
+      for (const page of chunk) {
         // For each page, get the associated topics and create a comma-separated list
         const pageTopics = database.page_topics
           .filter(pt => pt.page_id === page.id)
@@ -108,8 +150,8 @@ function saveDatabase() {
           }
         }
         
-        // Return only the essential fields
-        return {
+        // Add the simplified page to the storage data
+        storageData.pages.push({
           id: page.id,
           url: page.url,
           title: page.title,
@@ -117,14 +159,98 @@ function saveDatabase() {
           html_content: page.html_content,
           topics: pageTopics,
           date_archived: page.date_archived
-        };
-      }),
-      settings: database.settings
-    };
+        });
+      }
+    }
     
+    // Write to file
     fs.writeFileSync(JSON_FILE_PATH, JSON.stringify(storageData, null, 2), 'utf8');
+    console.log('Database saved to disk');
   } catch (error) {
     console.error('Error saving database to JSON file:', error);
+  }
+}
+
+// Batch insert multiple pages at once (more efficient than individual inserts)
+async function batchInsertPages(pages) {
+  if (!Array.isArray(pages) || pages.length === 0) {
+    return false;
+  }
+  
+  console.log(`Batch inserting ${pages.length} pages...`);
+  const startTime = Date.now();
+  
+  try {
+    // Get the next available ID
+    let nextId = getNextId('pages');
+    
+    // Prepare arrays for batch operations
+    const newPages = [];
+    const newTopics = [];
+    
+    // Get the current total size
+    const currentTotalSize = parseInt(database.settings.total_size_raw || '0', 10);
+    let addedSize = 0;
+    
+    // Process each page
+    for (const page of pages) {
+      // Check if URL already exists
+      if (urlExists(page.url)) {
+        console.log(`Page already exists: ${page.url}`);
+        continue;
+      }
+      
+      // Create page entry
+      const pageEntry = {
+        id: nextId,
+        url: page.url,
+        title: page.title,
+        html_content: page.content,
+        content_hash: page.contentHash,
+        date_archived: new Date().toISOString(),
+        content_size: page.size
+      };
+      
+      // Add page to batch
+      newPages.push(pageEntry);
+      
+      // Process topics
+      if (page.topics) {
+        for (const [topic, score] of Object.entries(page.topics)) {
+          newTopics.push({
+            page_id: nextId,
+            topic: topic,
+            confidence: score
+          });
+        }
+      }
+      
+      // Update stats
+      addedSize += page.size;
+      
+      // Increment ID for next page
+      nextId++;
+    }
+    
+    // Apply batch updates to database
+    database.pages.push(...newPages);
+    database.page_topics.push(...newTopics);
+    
+    // Update statistics
+    database.settings.total_pages = (parseInt(database.settings.total_pages || '0', 10) + newPages.length).toString();
+    database.settings.total_size_raw = (currentTotalSize + addedSize).toString();
+    database.settings.last_crawl_date = new Date().toISOString();
+    
+    // Save database to file
+    saveDatabase();
+    
+    const timeElapsed = Date.now() - startTime;
+    console.log(`Batch insert completed: ${newPages.length} pages added in ${timeElapsed}ms`);
+    
+    return true;
+  } catch (error) {
+    console.error('Error in batch insert:', error);
+    return false;
   }
 }
 
@@ -427,5 +553,6 @@ module.exports = {
   getStats,
   vacuumDatabase,
   saveCrawlerStats,
+  batchInsertPages,
   database
 }; 
