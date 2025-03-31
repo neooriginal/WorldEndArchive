@@ -17,7 +17,7 @@ const {
   database  // Import the database object for direct access
 } = require('./jsonDatabase');
 const { classifyContent } = require('./classifier');
-const pQueue = require('p-queue').default;
+const PQueue = require('p-queue');
 
 // Configuration settings
 const CONFIG = {
@@ -327,7 +327,7 @@ async function crawlPage(url, parentUrl, depth) {
  */
 function getDomainLimiter(domain) {
   if (!domainLimiters.has(domain)) {
-    domainLimiters.set(domain, new pQueue({ 
+    domainLimiters.set(domain, new PQueue({ 
       concurrency: CONFIG.maxConcurrentRequestsPerDomain,
       interval: 1000,
       intervalCap: CONFIG.maxConcurrentRequestsPerDomain
@@ -599,7 +599,7 @@ async function startCrawler(seedUrls, callbacks = {}) {
   console.log(`Successfully added ${seedCount} seed URLs to queue. Starting crawler...`);
   
   // Create overall crawler queue with higher concurrency
-  const crawlerQueue = new pQueue({ concurrency: CONFIG.concurrentRequests });
+  const crawlerQueue = new PQueue({ concurrency: CONFIG.concurrentRequests });
   
   // Process URLs in batches until explicitly stopped
   let running = true;
@@ -710,7 +710,7 @@ async function processBatch(batchSize, onPageProcessed = () => {}) {
   }
   
   // Create a queue with higher concurrency for overall processing
-  const queue = new pQueue({ concurrency: CONFIG.concurrentRequests });
+  const queue = new PQueue({ concurrency: CONFIG.concurrentRequests });
   
   // Process each URL
   const promises = batch.map(item => 
