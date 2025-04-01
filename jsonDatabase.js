@@ -390,6 +390,87 @@ function queueExists(url) {
   return queueUrlSet.has(url);
 }
 
+// Insert a page into the database with optimized performance
+function insertPage(url, title, htmlContent, contentHash, contentSize, _, topics) {
+  // Use URL index if available to check if page exists
+  let existingId = database.urlIndex ? database.urlIndex.get(url) : null;
+  let page = null;
+  
+  if (existingId) {
+    // Find existing page with ID
+    page = database.pages.find(p => p.id === existingId);
+    
+    if (page) {
+      // Update existing page
+      page.title = title;
+      page.html_content = htmlContent;
+      page.content_hash = contentHash;
+      page.content_size = contentSize;
+      page.last_checked = new Date().toISOString();
+    }
+  }
+  
+  if (!page) {
+    // Create a new page with optimized ID generation
+    const id = getNextId('pages');
+    page = {
+      id,
+      url,
+      title,
+      html_content: htmlContent,
+      content_hash: contentHash,
+      content_size: contentSize,
+      date_archived: new Date().toISOString(),
+      last_checked: new Date().toISOString()
+    };
+    database.pages.push(page);
+    
+    // Update indexes
+    if (database.urlIndex) {
+      database.urlIndex.set(url, id);
+    }
+    if (database.hashIndex && contentHash) {
+      database.hashIndex.set(contentHash, id);
+    }
+  }
+  
+  // Handle topics
+  if (topics && Object.keys(topics).length) {
+    // Remove existing topics for this page
+    database.page_topics = database.page_topics.filter(pt => pt.page_id !== page.id);
+    
+    // Add new topics
+    Object.entries(topics).forEach(([topic, confidence]) => {
+      database.page_topics.push({
+        page_id: page.id,
+        topic,
+        confidence
+      });
+    });
+  }
+  
+  // Remove from queue if exists
+  if (queueUrlSet && queueUrlSet.has(url)) {
+    queueUrlSet.delete(url);
+    database.crawl_queue = database.crawl_queue.filter(item => item.url !== url);
+  }
+  
+  // Update statistics
+  const totalPages = database.pages.length;
+  const sizeStats = {
+    raw: database.pages.reduce((sum, p) => sum + (p.content_size || 0), 0)
+  };
+  
+  database.settings['total_pages'] = totalPages.toString();
+  database.settings['total_size_raw'] = sizeStats.raw.toString();
+  database.settings['last_crawl_date'] = new Date().toISOString();
+  
+  // Save changes to disk
+  saveDatabase();
+  
+  return page.id;
+}
+
 // Add a URL to the crawl queue (in memory only)
 function addToQueue(url, parentUrl, depth, priority = 0) {
   // Use our set for fast lookups

@@ -173,6 +173,7 @@ async function savePageBuffer() {
           page.content,
           page.contentHash,
           page.size,
+          null,
           page.topics
         );
         pendingUrls.delete(page.url);
@@ -196,6 +197,7 @@ async function savePageBuffer() {
             page.content,
             page.contentHash,
             page.size,
+            null,
             page.topics
           );
           pendingUrls.delete(page.url);
