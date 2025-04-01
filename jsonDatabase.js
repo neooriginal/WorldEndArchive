@@ -18,16 +18,17 @@ let database = {
   settings: {}
 };
 
-// Add a throttling mechanism for database saves
+// Add more throttling mechanism for database saves
 let lastSaveTime = 0;
-const MIN_SAVE_INTERVAL = 10000; // Minimum 10 seconds between saves
+const MIN_SAVE_INTERVAL = 30000; // Increased to 30 seconds between saves (was 10000)
 let saveScheduled = false;
+let dirtyFlag = false; // Track if database has unsaved changes
 
 // Initialize the database
 function initializeDatabase() {
   if (fs.existsSync(JSON_FILE_PATH)) {
     try {
-      // Load from existing file
+      // Load from existing file - use faster synchronous read for startup
       const data = fs.readFileSync(JSON_FILE_PATH, 'utf8');
       const loadedData = JSON.parse(data);
       
@@ -39,7 +40,7 @@ function initializeDatabase() {
       if (loadedData.page_topics) {
         database.page_topics = loadedData.page_topics;
       } else {
-        // Reconstruct topics from comma-separated lists if using new format
+        // Create an index for faster topic lookups
         database.page_topics = [];
         database.pages.forEach(page => {
           if (page.topics) {
@@ -55,10 +56,13 @@ function initializeDatabase() {
         });
       }
       
+      // Build URL index for faster lookups
+      buildIndexes();
+      
       // Always initialize crawl_queue as empty
       database.crawl_queue = [];
       
-      console.log('Database loaded from JSON file');
+      console.log(`Database loaded with ${database.pages.length} pages and ${database.page_topics.length} topic entries`);
     } catch (error) {
       console.error('Error loading database from JSON file:', error);
       // Create a new database if loading fails
@@ -82,12 +86,38 @@ function initializeNewDatabase() {
       'total_size_raw': '0'
     }
   };
+  
+  // Create indexes for new database
+  buildIndexes();
+  
   saveDatabase();
   console.log('New database initialized');
 }
 
+// Build indexes for faster lookups
+function buildIndexes() {
+  // Create URL index for fast URL existence checks
+  database.urlIndex = new Map();
+  for (const page of database.pages) {
+    if (page.url) {
+      database.urlIndex.set(page.url, page.id);
+    }
+  }
+  
+  // Create hash index for deduplication
+  database.hashIndex = new Map();
+  for (const page of database.pages) {
+    if (page.content_hash) {
+      database.hashIndex.set(page.content_hash, page.id);
+    }
+  }
+  
+  console.log('Database indexes built');
+}
+
 // Save the database to the JSON file with throttling
 function saveDatabase() {
+  dirtyFlag = true;
   const currentTime = Date.now();
   
   // If it's been less than MIN_SAVE_INTERVAL since the last save, schedule a save for later
@@ -95,12 +125,15 @@ function saveDatabase() {
     if (!saveScheduled) {
       saveScheduled = true;
       const timeToWait = MIN_SAVE_INTERVAL - (currentTime - lastSaveTime);
-      console.log(`Throttling database save. Next save in ${timeToWait}ms`);
       
       setTimeout(() => {
         saveScheduled = false;
         lastSaveTime = Date.now();
-        performSave();
+        // Only save if there are unsaved changes
+        if (dirtyFlag) {
+          performSave();
+          dirtyFlag = false;
+        }
       }, timeToWait);
     }
     return; // Skip this save, it will happen later
@@ -109,49 +142,68 @@ function saveDatabase() {
   // Otherwise, save immediately
   lastSaveTime = currentTime;
   performSave();
+  dirtyFlag = false;
 }
 
-// Actual save operation
+// Actual save operation with optimized memory usage
 function performSave() {
   try {
+    console.log('Saving database to disk...');
+    const startTime = Date.now();
+    
     // Create a simplified version for storage, but process in chunks to reduce memory usage
-    const storageData = {
-      pages: [],
-      settings: database.settings
-    };
+    // We'll write directly to file in chunks to reduce memory pressure
+    const tempFile = JSON_FILE_PATH + '.tmp';
+    const writeStream = fs.createWriteStream(tempFile);
+    
+    // Start JSON object
+    writeStream.write('{\n');
+    writeStream.write('"pages": [\n');
     
     // Process pages in chunks of 1000 to reduce memory usage
     const CHUNK_SIZE = 1000;
     const totalPages = database.pages.length;
     
+    // Track if we need to add a comma
+    let isFirst = true;
+    
+    // Page topics lookup map for faster access
+    const pageTopicsMap = new Map();
+    for (const topicEntry of database.page_topics) {
+      if (!pageTopicsMap.has(topicEntry.page_id)) {
+        pageTopicsMap.set(topicEntry.page_id, []);
+      }
+      pageTopicsMap.get(topicEntry.page_id).push(topicEntry.topic);
+    }
+    
+    // Write pages in chunks
     for (let i = 0; i < totalPages; i += CHUNK_SIZE) {
       const chunk = database.pages.slice(i, i + CHUNK_SIZE);
       
       // Process this chunk of pages
       for (const page of chunk) {
-        // For each page, get the associated topics and create a comma-separated list
-        const pageTopics = database.page_topics
-          .filter(pt => pt.page_id === page.id)
-          .map(pt => pt.topic)
-          .join(', ');
+        // For each page, get the associated topics from our map
+        const pageTopics = pageTopicsMap.has(page.id) 
+          ? pageTopicsMap.get(page.id).join(', ')
+          : '';
           
-        // Extract a description from the HTML content (first 200 chars of text)
+        // Simple description extraction (if needed)
         let description = '';
         if (page.html_content) {
-          // Simple extraction of text from HTML
-          description = page.html_content
-            .replace(/<[^>]*>/g, ' ')  // Remove HTML tags
-            .replace(/\s+/g, ' ')      // Normalize whitespace
-            .trim()
-            .substring(0, 200);        // First 200 chars
-          
+          // Extract first 200 chars for description (simple method)
+          const strippedText = page.html_content
+            .replace(/<[^>]*>/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+            
+          description = strippedText.substring(0, 200);
           if (description.length === 200) {
             description += '...';
           }
         }
         
-        // Add the simplified page to the storage data
-        storageData.pages.push({
+        // Construct page JSON
+        const pageJson = {
           id: page.id,
           url: page.url,
           title: page.title,
@@ -159,15 +211,44 @@ function performSave() {
           html_content: page.html_content,
           topics: pageTopics,
           date_archived: page.date_archived
-        });
+        };
+        
+        // Add comma if not the first item
+        if (!isFirst) {
+          writeStream.write(',\n');
+        } else {
+          isFirst = false;
+        }
+        
+        // Write the page JSON
+        writeStream.write(JSON.stringify(pageJson));
       }
     }
     
-    // Write to file
-    fs.writeFileSync(JSON_FILE_PATH, JSON.stringify(storageData, null, 2), 'utf8');
-    console.log('Database saved to disk');
+    // Close the pages array and write settings
+    writeStream.write('\n],\n');
+    writeStream.write('"settings": ' + JSON.stringify(database.settings));
+    writeStream.write('\n}');
+    
+    // Use promise to handle stream completion
+    const streamFinished = new Promise((resolve, reject) => {
+      writeStream.on('finish', resolve);
+      writeStream.on('error', reject);
+    });
+    
+    // End the stream and wait for it to finish
+    writeStream.end();
+    
+    // After stream is finished, atomically rename the file
+    streamFinished.then(() => {
+      fs.renameSync(tempFile, JSON_FILE_PATH);
+      const timeElapsed = Date.now() - startTime;
+      console.log(`Database saved to disk in ${timeElapsed}ms`);
+    }).catch(error => {
+      console.error('Error writing database file:', error);
+    });
   } catch (error) {
-    console.error('Error saving database to JSON file:', error);
+    console.error('Error during database save:', error);
   }
 }
 
@@ -192,11 +273,24 @@ async function batchInsertPages(pages) {
     const currentTotalSize = parseInt(database.settings.total_size_raw || '0', 10);
     let addedSize = 0;
     
+    // Create a set of existing URLs for faster lookup
+    const existingUrls = new Set(pages.filter(p => urlExists(p.url)).map(p => p.url));
+    
+    // Create a set of existing content hashes for deduplication
+    const existingHashes = new Set();
+    pages.forEach(page => {
+      if (page.contentHash) {
+        // Check if this hash exists in the database
+        if (database.hashIndex && database.hashIndex.has(page.contentHash)) {
+          existingHashes.add(page.contentHash);
+        }
+      }
+    });
+    
     // Process each page
     for (const page of pages) {
-      // Check if URL already exists
-      if (urlExists(page.url)) {
-        console.log(`Page already exists: ${page.url}`);
+      // Skip if URL or content hash already exists
+      if (existingUrls.has(page.url) || existingHashes.has(page.contentHash)) {
         continue;
       }
       
@@ -223,6 +317,20 @@ async function batchInsertPages(pages) {
             confidence: score
           });
         }
+      }
+      
+      // Add to indexes
+      if (database.urlIndex) {
+        database.urlIndex.set(page.url, nextId);
+      }
+      if (database.hashIndex && page.contentHash) {
+        database.hashIndex.set(page.contentHash, nextId);
+      }
+      
+      // Add to existing sets to prevent duplicates within this batch
+      existingUrls.add(page.url);
+      if (page.contentHash) {
+        existingHashes.add(page.contentHash);
       }
       
       // Update stats
@@ -260,82 +368,39 @@ function getNextId(collection) {
   return ids.length > 0 ? Math.max(...ids) + 1 : 1;
 }
 
-// Check if a URL exists in the pages collection
+// Check if a URL exists in the pages collection - use index for speed
 function urlExists(url) {
+  // Use URL index if available
+  if (database.urlIndex) {
+    return database.urlIndex.has(url);
+  }
+  // Fall back to array search
   return database.pages.some(page => page.url === url);
 }
 
+// Check if a URL exists in the crawl queue - use Map for faster lookups
+let queueUrlSet = null;
+
 // Check if a URL exists in the crawl queue
 function queueExists(url) {
-  return database.crawl_queue.some(item => item.url === url);
-}
-
-// Insert a page into the database
-function insertPage(url, title, htmlContent, contentHash, contentSize, _, topics) {
-  let page = database.pages.find(p => p.url === url);
-  
-  if (page) {
-    // Update existing page
-    page.title = title;
-    page.html_content = htmlContent; // Store as plain text HTML
-    page.content_hash = contentHash;
-    page.content_size = contentSize;
-    page.last_checked = new Date().toISOString();
-  } else {
-    // Create a new page
-    const id = getNextId('pages');
-    page = {
-      id,
-      url,
-      title,
-      html_content: htmlContent, // Store as plain text HTML
-      content_hash: contentHash,
-      content_size: contentSize,
-      date_archived: new Date().toISOString(),
-      last_checked: new Date().toISOString()
-    };
-    database.pages.push(page);
+  // Initialize set on first use
+  if (!queueUrlSet) {
+    queueUrlSet = new Set(database.crawl_queue.map(item => item.url));
   }
-  
-  // Handle topics
-  if (topics && Object.keys(topics).length) {
-    // Remove existing topics for this page
-    database.page_topics = database.page_topics.filter(pt => pt.page_id !== page.id);
-    
-    // Add new topics
-    Object.entries(topics).forEach(([topic, confidence]) => {
-      database.page_topics.push({
-        page_id: page.id,
-        topic,
-        confidence
-      });
-    });
-  }
-  
-  // Remove from queue if exists
-  database.crawl_queue = database.crawl_queue.filter(item => item.url !== url);
-  
-  // Update statistics
-  const totalPages = database.pages.length;
-  const sizeStats = {
-    raw: database.pages.reduce((sum, p) => sum + (p.content_size || 0), 0)
-  };
-  
-  database.settings['total_pages'] = totalPages.toString();
-  database.settings['total_size_raw'] = sizeStats.raw.toString();
-  database.settings['last_crawl_date'] = new Date().toISOString();
-  
-  // Save changes to disk
-  saveDatabase();
-  
-  console.log(`Stored content for ${url} (${htmlContent ? htmlContent.length : 0} bytes)`);
-  return page.id;
+  return queueUrlSet.has(url);
 }
 
 // Add a URL to the crawl queue (in memory only)
 function addToQueue(url, parentUrl, depth, priority = 0) {
-  if (queueExists(url) || urlExists(url)) return false;
+  // Use our set for fast lookups
+  if (!queueUrlSet) {
+    queueUrlSet = new Set(database.crawl_queue.map(item => item.url));
+  }
   
+  // Skip if already in queue or already crawled
+  if (queueUrlSet.has(url) || urlExists(url)) return false;
+  
+  // Add to queue
   database.crawl_queue.push({
     url,
     parent_url: parentUrl,
@@ -345,43 +410,85 @@ function addToQueue(url, parentUrl, depth, priority = 0) {
     attempts: 0
   });
   
-  // No need to save the full database as we don't want to persist the queue
+  // Update our index
+  queueUrlSet.add(url);
+  
   return true;
 }
 
-// Get the next batch of URLs from the queue
+// Get the next batch of URLs from the queue with domain balancing
 function getNextBatchFromQueue(batchSize, maxAttempts = 3) {
   // Create a map to track selected domains to limit URLs per domain in a batch
   const domainCounts = new Map();
   const maxPerDomain = 2; // Max URLs per domain in a single batch
   
-  // Sort and filter the queue first
-  const sortedQueue = database.crawl_queue
-    .filter(item => item.status === 'pending' && item.attempts < maxAttempts)
-    .sort((a, b) => {
+  // Filter the queue for pending items with domain grouping
+  const domains = new Map();
+  
+  for (const item of database.crawl_queue) {
+    if (item.status === 'pending' && item.attempts < maxAttempts) {
+      try {
+        const domain = new URL(item.url).hostname;
+        if (!domains.has(domain)) {
+          domains.set(domain, []);
+        }
+        domains.get(domain).push(item);
+      } catch (e) {
+        // Handle invalid URLs in a separate group
+        if (!domains.has('_invalid_')) {
+          domains.set('_invalid_', []);
+        }
+        domains.get('_invalid_').push(item);
+      }
+    }
+  }
+  
+  // Sort items within each domain by priority and depth
+  for (const [domain, items] of domains) {
+    domains.set(domain, items.sort((a, b) => {
       // Sort by priority (desc) then depth (asc)
       if (b.priority !== a.priority) return b.priority - a.priority;
       return a.depth - b.depth;
-    });
-
-  // Select URLs while respecting domain limits
-  const selectedItems = [];
+    }));
+  }
   
-  for (const item of sortedQueue) {
-    if (selectedItems.length >= batchSize) break;
+  // Select items with domain balancing
+  const selectedItems = [];
+  let domainsWithItems = Array.from(domains.keys());
+  
+  // Round-robin selection from domains
+  while (selectedItems.length < batchSize && domainsWithItems.length > 0) {
+    // Start with a fresh set of domains for each round
+    const currentDomains = [...domainsWithItems];
+    let addedInRound = false;
     
-    try {
-      const domain = new URL(item.url).hostname;
-      const domainCount = domainCounts.get(domain) || 0;
-      
-      if (domainCount < maxPerDomain) {
-        selectedItems.push(item);
-        domainCounts.set(domain, domainCount + 1);
+    for (const domain of currentDomains) {
+      const itemsForDomain = domains.get(domain);
+      if (itemsForDomain.length === 0) {
+        // Remove empty domains
+        domains.delete(domain);
+      } else {
+        const domainCount = domainCounts.get(domain) || 0;
+        if (domainCount < maxPerDomain) {
+          // Take the top priority item from this domain
+          const item = itemsForDomain.shift();
+          selectedItems.push(item);
+          domainCounts.set(domain, domainCount + 1);
+          addedInRound = true;
+          
+          // Break if we've reached the batch size
+          if (selectedItems.length >= batchSize) break;
+        }
       }
-    } catch (e) {
-      // If URL is invalid, still include it (will be filtered out later)
-      selectedItems.push(item);
     }
+    
+    // Update domains with items left
+    domainsWithItems = Array.from(domains.keys()).filter(
+      domain => domains.get(domain).length > 0
+    );
+    
+    // If we didn't add any items in this round, break to avoid infinite loop
+    if (!addedInRound) break;
   }
   
   // Return the selected items
@@ -392,23 +499,24 @@ function getNextBatchFromQueue(batchSize, maxAttempts = 3) {
   }));
 }
 
-// Mark URLs as in progress
+// Mark URLs as in progress with batch support
 function markUrlInProgress(urls) {
-  //make sure it can handle array or single url
+  // Make sure it can handle array or single url
   if (!Array.isArray(urls)) {
     urls = [urls];
   }
   
-  urls.forEach(url => {
-    const item = database.crawl_queue.find(q => q.url === url);
-    if (item) {
+  // Use Set for faster lookups
+  const urlSet = new Set(urls);
+  
+  for (let i = 0; i < database.crawl_queue.length; i++) {
+    const item = database.crawl_queue[i];
+    if (urlSet.has(item.url)) {
       item.status = 'in_progress';
       item.attempts += 1;
       item.last_attempt = new Date().toISOString();
     }
-  });
-  
-  // No need to save as crawl_queue is only in memory
+  }
 }
 
 // Mark a URL as failed

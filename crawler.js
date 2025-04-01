@@ -23,14 +23,14 @@ const { classifyContent } = require('./classifier');
 const CONFIG = {
   // Crawling parameters
   maxDepth: 3,                    // Maximum depth to crawl
-  concurrentRequests: 10,         // Number of concurrent requests
-  maxConcurrentRequestsPerDomain: 2, // Limit requests per domain
-  requestTimeout: 15000,          // Increased timeout to 15 seconds (was 1000)
-  requestDelay: 300,              // Decreased delay between batches (was 500)
+  concurrentRequests: 15,         // Increased concurrent requests (was 10)
+  maxConcurrentRequestsPerDomain: 3, // Increased per domain limit (was 2)
+  requestTimeout: 15000,          // 15 seconds timeout
+  requestDelay: 200,              // Decreased delay for faster crawling (was 300)
   respectRobotsTxt: true,         // Whether to respect robots.txt
   
   // In-memory page buffer settings
-  pageBufferSize: 100,           // Number of pages to buffer before saving to database
+  pageBufferSize: 250,           // Increased buffer size for fewer disk writes (was 100)
   
   humanuserAgents: [
     // Chrome
@@ -118,17 +118,18 @@ const robotsTxtCache = new Map();
 
 // Create in-memory page buffer for batch database operations
 const pageBuffer = [];
+const pendingUrls = new Set(); // Track URLs being processed to avoid duplicates
 
 /**
- * Buffer a page for batch database insert
- * @param {string} url - Page URL
- * @param {string} title - Page title
- * @param {string} content - Page HTML content
- * @param {string} contentHash - Hash for deduplication
- * @param {number} size - Content size in bytes
- * @param {Object} topics - Classified topics
+ * Buffer a page for batch database insert with improved duplicate handling
  */
 async function bufferPage(url, title, content, contentHash, size, topics) {
+  // Skip if already in buffer
+  if (pendingUrls.has(url)) {
+    return;
+  }
+  
+  pendingUrls.add(url);
   pageBuffer.push({
     url,
     title,
@@ -145,19 +146,26 @@ async function bufferPage(url, title, content, contentHash, size, topics) {
 }
 
 /**
- * Save all pages in buffer to database
+ * Save all pages in buffer to database with optimized error handling
  */
 async function savePageBuffer() {
   if (pageBuffer.length === 0) return;
   
   console.log(`Saving batch of ${pageBuffer.length} pages to database...`);
+  const startTime = Date.now();
   
   try {
-    // If batchInsertPages is available, use it
+    // Use batch insert for better performance
     if (typeof batchInsertPages === 'function') {
       await batchInsertPages(pageBuffer);
+      // Clear tracking sets after successful save
+      pageBuffer.forEach(page => pendingUrls.delete(page.url));
+      pageBuffer.length = 0;
+      
+      const timeElapsed = Date.now() - startTime;
+      console.log(`Batch save completed in ${timeElapsed}ms`);
     } else {
-      // Otherwise, insert pages one by one
+      // Fallback to individual inserts if batch insert unavailable
       for (const page of pageBuffer) {
         await insertPage(
           page.url,
@@ -167,18 +175,18 @@ async function savePageBuffer() {
           page.size,
           page.topics
         );
+        pendingUrls.delete(page.url);
       }
+      pageBuffer.length = 0;
     }
-    
-    // Clear the buffer
-    pageBuffer.length = 0;
-    console.log('Batch save completed successfully');
   } catch (error) {
     console.error('Error saving page buffer:', error);
     
-    // In case of error, try to save individually
-    if (typeof batchInsertPages === 'function') {
+    // In case of error, try to save individually for resilience
+    if (pageBuffer.length > 0) {
       console.log('Trying to save pages individually...');
+      const failedPages = [];
+      
       for (let i = 0; i < pageBuffer.length; i++) {
         try {
           const page = pageBuffer[i];
@@ -190,13 +198,17 @@ async function savePageBuffer() {
             page.size,
             page.topics
           );
-          
-          // Remove saved page from buffer
-          pageBuffer.splice(i, 1);
-          i--;
+          pendingUrls.delete(page.url);
         } catch (e) {
-          console.error(`Error saving individual page (${i}):`, e.message);
+          console.error(`Error saving individual page: ${e.message}`);
+          failedPages.push(pageBuffer[i]);
         }
+      }
+      
+      // Keep only failed pages in the buffer
+      pageBuffer.length = 0;
+      if (failedPages.length > 0) {
+        pageBuffer.push(...failedPages);
       }
     }
   }
@@ -531,13 +543,10 @@ function releaseDomainLock(domain) {
 }
 
 /**
- * Process the actual crawling after rate limiting
- * @param {string} url - URL to crawl
- * @param {string} parentUrl - Parent URL that linked to this one
- * @param {number} depth - Current crawl depth
+ * Process the actual crawling after rate limiting with optimized HTML processing
  */
 async function processCrawl(url, parentUrl, depth) {
-  // Fetch page with retry logic
+  // Optimized fetch with streamlined error handling
   let response;
   let retries = 3;
   
@@ -553,118 +562,113 @@ async function processCrawl(url, parentUrl, depth) {
           'Cache-Control': 'no-cache',
           'Pragma': 'no-cache'
         },
-        responseType: 'arraybuffer',  // Use arraybuffer to handle binary content
-        validateStatus: status => status < 500 // Accept all status codes below 500 to handle them ourselves
+        responseType: 'arraybuffer',
+        validateStatus: status => status < 500
       });
       break; // Success, exit retry loop
     } catch (e) {
       retries--;
       if (retries === 0) {
-        throw e; // Re-throw if all retries failed
+        throw e;
       }
-      console.log(`Retry ${3-retries}/3 for ${url} after error: ${e.message}`);
-      // Add exponential backoff between retries
-      const waitTime = 1000 * Math.pow(2, 3-retries);
-      console.log(`Waiting ${waitTime}ms before next retry`);
-      await new Promise(resolve => setTimeout(resolve, waitTime));
+      await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, 3-retries)));
     }
   }
   
-  // Handle HTTP error codes, but only mark 403, 401, 410 as permanently failed
+  // Quick status code check
   if (response.status !== 200) {
-    const errorMessage = `HTTP error: ${response.status}`;
-    console.log(`Skipping (${errorMessage}): ${url}`);
-    
-    // Only mark permanent errors as failed, others could be temporary
     if ([401, 403, 410].includes(response.status)) {
-      markUrlFailed(url, errorMessage);
-    } else {
-      // For other errors (like 429, 500, etc), we'll add back to queue with a delay if depth allows
-      if (depth < CONFIG.maxDepth) {
-        console.log(`Re-queuing ${url} for later retry due to temporary error`);
-        await addToQueue(url, parentUrl, depth, 1); // Lower priority for retry
-      }
+      markUrlFailed(url, `HTTP error: ${response.status}`);
+    } else if (depth < CONFIG.maxDepth) {
+      await addToQueue(url, parentUrl, depth, 1);
     }
     return;
   }
   
-  // Determine content type
+  // Efficient content type check
   const contentType = response.headers['content-type'] || '';
-  
-  // Skip non-HTML content
   if (!CONFIG.allowedContentTypes.some(type => contentType.includes(type))) {
-    console.log(`Skipping (unsupported content type ${contentType}): ${url}`);
     markUrlFailed(url, `Unsupported content type: ${contentType}`);
     return;
   }
   
-  // Convert to utf-8 string for processing
+  // Optimized content conversion
   const contentBuffer = Buffer.from(response.data);
   let htmlContent;
   
   try {
-    // Try to decode as UTF-8 first
     htmlContent = contentBuffer.toString('utf8');
   } catch (e) {
-    // Fall back to latin1 if UTF-8 fails
     htmlContent = contentBuffer.toString('latin1');
   }
   
-  // Use a single cheerio instance for all operations to avoid multiple parsing
+  // Single cheerio parse for all operations
   const $ = cheerio.load(htmlContent);
   
-  // Extract title and body text in one pass
+  // Extract data in a single pass
   const title = $('title').text().trim() || url;
   
-  // Extract text content using a more optimized approach
-  // Only extract text from common content elements
-  const bodyText = $('body').find('p, h1, h2, h3, h4, h5, h6, article, section, main, div.content, div.main').text();
+  // More targeted content extraction for better performance
+  const bodyText = $('article, main, .content, [role="main"]').text() || 
+                   $('p, h1, h2, h3, h4, h5, h6').text() || 
+                   $('body').text();
   
-  // Skip pages with extremely short content, but extract links regardless
-  const isContentTooShort = bodyText.length < CONFIG.minContentLength;
-  
-  // Extract links regardless of content length if we haven't reached max depth
-  let newLinks = 0;
-  
+  // Optimize link extraction if depth allows
   if (depth < CONFIG.maxDepth) {
-    // More efficient link extraction
-    const links = new Set(); // Use a Set to avoid duplicate URLs
+    // Use Set for deduplication
+    const links = new Set();
+    const domain = extractDomain(url);
     
-    // Find all links
-    $('a[href]').each((_, link) => {
+    // More efficient link selection
+    $('a[href]:not([rel="nofollow"])').each((_, link) => {
       const href = $(link).attr('href');
       if (href) {
         try {
-          // Convert to absolute URL
           const absoluteUrl = new URL(href, url).toString();
-          
-          // Check if URL should be crawled
           if (shouldCrawlUrl(absoluteUrl)) {
             links.add(absoluteUrl);
           }
-        } catch (e) {
-          // Invalid URL, skip
+        } catch {
+          // Skip invalid URLs
         }
       }
     });
     
-    // Add unique links to queue
-    const linkPromises = [];
+    // Process links in batch with Map to track domains
+    const linksByDomain = new Map();
+    
+    // Group links by domain for prioritization
     for (const link of links) {
-      const priority = calculateUrlPriority(link, depth + 1);
-      linkPromises.push(addToQueue(link, url, depth + 1, priority));
+      try {
+        const linkDomain = extractDomain(link);
+        if (!linksByDomain.has(linkDomain)) {
+          linksByDomain.set(linkDomain, []);
+        }
+        linksByDomain.get(linkDomain).push(link);
+      } catch {
+        // Skip invalid URLs
+      }
     }
     
-    // Process all links in parallel
-    const results = await Promise.all(linkPromises);
-    newLinks = results.filter(result => result).length;
+    // Add links with prioritization and limiting per domain
+    const linkPromises = [];
+    for (const [linkDomain, domainLinks] of linksByDomain) {
+      // Limit links per domain for better distribution
+      const maxLinksPerDomain = 10;
+      const selectedLinks = domainLinks.slice(0, maxLinksPerDomain);
+      
+      for (const link of selectedLinks) {
+        const priority = calculateUrlPriority(link, depth + 1);
+        linkPromises.push(addToQueue(link, url, depth + 1, priority));
+      }
+    }
     
-    console.log(`Found ${links.size} links, added ${newLinks} new ones to queue`);
+    await Promise.all(linkPromises);
+    console.log(`Found ${links.size} links, added to queue`);
   }
   
-  // Skip archiving if content is too short, but we've already added the links
-  if (isContentTooShort) {
-    console.log(`Skipping (content too short): ${url}`);
+  // Skip if content too short
+  if (bodyText.length < CONFIG.minContentLength) {
     return;
   }
   
@@ -676,37 +680,22 @@ async function processCrawl(url, parentUrl, depth) {
     CONFIG.topicWeights
   );
   
-  // Check if any topics matched with good confidence
-  const topicCount = Object.keys(topics).length;
-  if (topicCount < CONFIG.minTopicsRequired) {
-    console.log(`Skipping (no relevant topics found): ${url}`);
+  if (Object.keys(topics).length < CONFIG.minTopicsRequired) {
     return;
   }
   
-  console.log(`Content classified into ${topicCount} topics: ${Object.keys(topics).join(', ')}`);
+  // Create hash for deduplication
+  const contentHash = crypto.createHash('sha256').update(htmlContent).digest('hex');
   
-  // Store the content as plain text HTML
-  try {
-    // Create hash for deduplication
-    const contentHash = crypto.createHash('sha256').update(htmlContent).digest('hex');
-    
-    // Buffer the content for batch database insert
-    await bufferPage(
-      url,
-      title,
-      htmlContent,
-      contentHash,
-      htmlContent.length,
-      topics
-    );
-    
-    console.log(`Successfully buffered ${htmlContent.length} bytes for: ${url}`);
-  } catch (storageError) {
-    console.error(`Error buffering content for ${url}: ${storageError.message}`);
-    throw storageError;
-  }
-  
-  console.log(`Successfully buffered: ${url}`);
+  // Buffer the content for batch database insert
+  await bufferPage(
+    url,
+    title,
+    htmlContent,
+    contentHash,
+    htmlContent.length,
+    topics
+  );
 }
 
 /**
@@ -892,44 +881,78 @@ async function addSeedUrlsToQueue(seedUrls) {
 }
 
 /**
- * Process a batch of URLs from the queue
- * @param {number} batchSize - Number of URLs to process
- * @param {Function} onPageProcessed - Callback for processed pages
+ * Process a batch of URLs from the queue with optimized concurrency
  */
 async function processBatch(batchSize, onPageProcessed = () => {}) {
-  // Get next batch from queue
+  // Get next batch with improved domain balancing
   const batch = await getNextBatchFromQueue(batchSize);
   
   if (batch.length === 0) {
-    console.log('No URLs in queue to process');
     return false;
   }
   
   console.log(`Processing batch of ${batch.length} URLs`);
   
-  // Mark URLs as in progress
+  // Mark URLs as in progress in bulk
+  const urls = batch.map(item => item.url);
+  markUrlInProgress(urls);
+  
+  // Group by domain for better concurrency management
+  const byDomain = new Map();
   for (const item of batch) {
-    markUrlInProgress(item.url);
+    try {
+      const domain = extractDomain(item.url);
+      if (!byDomain.has(domain)) {
+        byDomain.set(domain, []);
+      }
+      byDomain.get(domain).push(item);
+    } catch {
+      // Process invalid URLs individually
+      processSinglePage(item.url, item.parent_url, item.depth, onPageProcessed);
+    }
   }
   
-  // Process the URLs concurrently with a simple approach
-  const promises = batch.map(item => 
-    processSinglePage(item.url, item.parent_url, item.depth, onPageProcessed)
-  );
+  // Process domains in parallel but limit concurrency within each domain
+  const domainPromises = [];
+  for (const [domain, items] of byDomain.entries()) {
+    domainPromises.push(processDomainBatch(domain, items, onPageProcessed));
+  }
   
-  try {
-    // Wait for all to complete with timeout protection
-    await Promise.all(promises);
-    
-    // If we've accumulated enough pages in the buffer, save them
-    if (pageBuffer.length >= Math.min(CONFIG.pageBufferSize / 2, 20)) {
-      await savePageBuffer();
-    }
-  } catch (error) {
-    console.error('Error processing batch:', error);
+  await Promise.all(domainPromises);
+  
+  // Save buffer if it has enough items
+  if (pageBuffer.length >= CONFIG.pageBufferSize / 2) {
+    await savePageBuffer();
   }
   
   return true;
+}
+
+/**
+ * Process all URLs for a single domain with controlled concurrency
+ */
+async function processDomainBatch(domain, items, onPageProcessed) {
+  const concurrency = CONFIG.maxConcurrentRequestsPerDomain;
+  const queue = [...items];
+  const activePromises = new Set();
+  
+  // Process queue with controlled concurrency
+  while (queue.length > 0 || activePromises.size > 0) {
+    // Fill up to concurrency limit
+    while (queue.length > 0 && activePromises.size < concurrency) {
+      const item = queue.shift();
+      const promise = processSinglePage(item.url, item.parent_url, item.depth, onPageProcessed)
+        .then(() => {
+          activePromises.delete(promise);
+        });
+      activePromises.add(promise);
+    }
+    
+    // Wait for at least one promise to complete if we've reached the limit
+    if (activePromises.size >= concurrency) {
+      await Promise.race(activePromises);
+    }
+  }
 }
 
 /**
