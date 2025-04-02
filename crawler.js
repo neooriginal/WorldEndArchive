@@ -25,9 +25,9 @@ const CONFIG = {
   maxDepth: 3,                    // Maximum depth to crawl
   concurrentRequests: 15,         // Increased concurrent requests (was 10)
   maxConcurrentRequestsPerDomain: 3, // Increased per domain limit (was 2)
-  requestTimeout: 15000,          // 15 seconds timeout
+  requestTimeout: 10000,          // 10 seconds timeout (reduced from 15 seconds)
   requestDelay: 200,              // Decreased delay for faster crawling (was 300)
-  respectRobotsTxt: true,         // Whether to respect robots.txt
+  respectRobotsTxt: false,        // Temporarily disable robots.txt checking as it's causing hangs
   
   // In-memory page buffer settings
   pageBufferSize: 250,           // Increased buffer size for fewer disk writes (was 100)
@@ -289,25 +289,44 @@ function shouldCrawlUrl(url) {
  * @returns {Promise<boolean>} Whether URL is allowed
  */
 async function isAllowedByRobotsTxt(url) {
+  console.log(`Robots.txt check requested for ${url}. respectRobotsTxt setting: ${CONFIG.respectRobotsTxt}`);
+  
   if (!CONFIG.respectRobotsTxt) {
+    console.log(`Robots.txt checking disabled in config. Allowing URL: ${url}`);
     return true;
   }
   
   try {
+    console.log(`Parsing URL for robots.txt check: ${url}`);
     const parsedUrl = new URL(url);
     const domain = parsedUrl.origin;
+    console.log(`Checking robots.txt for domain: ${domain}`);
     
     // Check cache first
     if (!robotsTxtCache.has(domain)) {
-      // Fetch robots.txt
+      console.log(`No cached robots.txt for domain: ${domain}, fetching now...`);
+      // Fetch robots.txt with timeout safety
       try {
         const robotsUrl = `${domain}/robots.txt`;
-        const response = await axios.get(robotsUrl, { 
-          timeout: CONFIG.requestTimeout,
-          headers: {
-            'User-Agent': CONFIG.humanuserAgents[Math.floor(Math.random() * CONFIG.humanuserAgents.length)]
-          }
+        console.log(`Fetching robots.txt from: ${robotsUrl}`);
+        
+        // Create a promise that rejects after a timeout
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Robots.txt request timed out')), 5000);
         });
+        
+        // Race the actual request against the timeout
+        const response = await Promise.race([
+          axios.get(robotsUrl, { 
+            timeout: 5000, // Shorter timeout specifically for robots.txt
+            headers: {
+              'User-Agent': CONFIG.humanuserAgents[Math.floor(Math.random() * CONFIG.humanuserAgents.length)]
+            }
+          }),
+          timeoutPromise
+        ]);
+        
+        console.log(`Successfully fetched robots.txt from: ${robotsUrl}`);
         
         // Simple robots.txt parsing
         const lines = response.data.split('\n');
@@ -355,20 +374,26 @@ async function isAllowedByRobotsTxt(url) {
           }
         }
         
+        console.log(`Parsed robots.txt for ${domain}, found ${rules.allow.length} allow rules and ${rules.disallow.length} disallow rules`);
         robotsTxtCache.set(domain, rules);
       } catch (e) {
         // If can't fetch robots.txt, assume everything is allowed
+        console.log(`Error fetching robots.txt for ${domain}: ${e.message}, allowing all URLs by default`);
         robotsTxtCache.set(domain, { allow: [], disallow: [] });
       }
+    } else {
+      console.log(`Using cached robots.txt for domain: ${domain}`);
     }
     
     // Check against rules
     const rules = robotsTxtCache.get(domain);
     const path = parsedUrl.pathname;
+    console.log(`Checking path: ${path} against robots.txt rules for ${domain}`);
     
     // Check allow rules (they take precedence)
     for (const allowPath of rules.allow) {
       if (path.startsWith(allowPath)) {
+        console.log(`Path ${path} is explicitly allowed by rule: ${allowPath}`);
         return true;
       }
     }
@@ -376,14 +401,17 @@ async function isAllowedByRobotsTxt(url) {
     // Check disallow rules
     for (const disallowPath of rules.disallow) {
       if (path.startsWith(disallowPath)) {
+        console.log(`Path ${path} is disallowed by rule: ${disallowPath}`);
         return false;
       }
     }
     
     // If no rule matches, it's allowed
+    console.log(`No matching rules for path ${path}, allowing by default`);
     return true;
   } catch (e) {
     // If any error occurs, default to allowing the URL
+    console.error(`Error in robots.txt check for ${url}: ${e.message}, allowing by default`);
     return true;
   }
 }
@@ -479,11 +507,13 @@ async function crawlPage(url, parentUrl, depth) {
   
   try {
     // Check if allowed by robots.txt
+    console.log(`Checking robots.txt for: ${url}`);
     if (!await isAllowedByRobotsTxt(url)) {
       console.log(`Skipping (robots.txt): ${url}`);
       markUrlFailed(url, "Blocked by robots.txt");
       return;
     }
+    console.log(`Robots.txt check passed for: ${url}`);
     
     // Get domain for rate limiting
     const domain = extractDomain(url);
@@ -494,11 +524,14 @@ async function crawlPage(url, parentUrl, depth) {
     }
     
     // Apply rate limiting
+    console.log(`Acquiring domain lock for: ${domain}`);
     await getDomainLock(domain);
+    console.log(`Domain lock acquired for: ${domain}`);
     
     // Process the crawl
     return processCrawl(url, parentUrl, depth).finally(() => {
       // Release the domain lock
+      console.log(`Releasing domain lock for: ${domain}`);
       releaseDomainLock(domain);
     });
   } catch (error) {
@@ -519,16 +552,24 @@ const domainCounts = new Map();
 async function getDomainLock(domain) {
   // Initialize the domain count if it doesn't exist
   if (!domainCounts.has(domain)) {
+    console.log(`Initializing domain count for: ${domain}`);
     domainCounts.set(domain, 0);
   }
   
+  let waitCount = 0;
   // Wait until we can acquire a lock
   while (domainCounts.get(domain) >= CONFIG.maxConcurrentRequestsPerDomain) {
+    waitCount++;
+    if (waitCount === 1 || waitCount % 10 === 0) {  // Log on first wait and every 10th wait
+      console.log(`Waiting for domain lock on ${domain} - currently ${domainCounts.get(domain)}/${CONFIG.maxConcurrentRequestsPerDomain} active (wait #${waitCount})`);
+    }
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   
   // Increment the count for this domain
-  domainCounts.set(domain, domainCounts.get(domain) + 1);
+  const currentCount = domainCounts.get(domain);
+  domainCounts.set(domain, currentCount + 1);
+  console.log(`Lock acquired for ${domain} - now ${domainCounts.get(domain)}/${CONFIG.maxConcurrentRequestsPerDomain} active`);
 }
 
 /**
@@ -540,7 +581,12 @@ function releaseDomainLock(domain) {
     const count = domainCounts.get(domain);
     if (count > 0) {
       domainCounts.set(domain, count - 1);
+      console.log(`Lock released for ${domain} - now ${domainCounts.get(domain)}/${CONFIG.maxConcurrentRequestsPerDomain} active`);
+    } else {
+      console.warn(`Attempt to release lock for ${domain} when count is already ${count}`);
     }
+  } else {
+    console.warn(`Attempt to release lock for unknown domain: ${domain}`);
   }
 }
 
@@ -548,156 +594,176 @@ function releaseDomainLock(domain) {
  * Process the actual crawling after rate limiting with optimized HTML processing
  */
 async function processCrawl(url, parentUrl, depth) {
-  // Optimized fetch with streamlined error handling
-  let response;
-  let retries = 3;
+  console.log(`Starting fetch for: ${url}`);
   
-  while (retries > 0) {
-    try {
-      response = await axios.get(url, {
-        timeout: CONFIG.requestTimeout,
-        maxContentLength: CONFIG.maxPageSize,
-        headers: {
-          'User-Agent': CONFIG.humanuserAgents[Math.floor(Math.random() * CONFIG.humanuserAgents.length)],
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.5',
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache'
-        },
-        responseType: 'arraybuffer',
-        validateStatus: status => status < 500
-      });
-      break; // Success, exit retry loop
-    } catch (e) {
-      retries--;
-      if (retries === 0) {
-        throw e;
-      }
-      await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, 3-retries)));
-    }
-  }
-  
-  // Quick status code check
-  if (response.status !== 200) {
-    if ([401, 403, 410].includes(response.status)) {
-      markUrlFailed(url, `HTTP error: ${response.status}`);
-    } else if (depth < CONFIG.maxDepth) {
-      await addToQueue(url, parentUrl, depth, 1);
-    }
-    return;
-  }
-  
-  // Efficient content type check
-  const contentType = response.headers['content-type'] || '';
-  if (!CONFIG.allowedContentTypes.some(type => contentType.includes(type))) {
-    markUrlFailed(url, `Unsupported content type: ${contentType}`);
-    return;
-  }
-  
-  // Optimized content conversion
-  const contentBuffer = Buffer.from(response.data);
-  let htmlContent;
+  // Add a timeout for the entire function
+  const timeout = setTimeout(() => {
+    console.error(`ERROR: Processing of ${url} timed out after 60 seconds. Terminating.`);
+    // This will crash the process but prevent indefinite hanging
+    process.exit(1);
+  }, 60000); // 60 second timeout
   
   try {
-    htmlContent = contentBuffer.toString('utf8');
-  } catch (e) {
-    htmlContent = contentBuffer.toString('latin1');
-  }
-  
-  // Single cheerio parse for all operations
-  const $ = cheerio.load(htmlContent);
-  
-  // Extract data in a single pass
-  const title = $('title').text().trim() || url;
-  
-  // More targeted content extraction for better performance
-  const bodyText = $('article, main, .content, [role="main"]').text() || 
-                   $('p, h1, h2, h3, h4, h5, h6').text() || 
-                   $('body').text();
-  
-  // Optimize link extraction if depth allows
-  if (depth < CONFIG.maxDepth) {
-    // Use Set for deduplication
-    const links = new Set();
-    const domain = extractDomain(url);
+    // Optimized fetch with streamlined error handling
+    let response;
+    let retries = 3;
     
-    // More efficient link selection
-    $('a[href]:not([rel="nofollow"])').each((_, link) => {
-      const href = $(link).attr('href');
-      if (href) {
-        try {
-          const absoluteUrl = new URL(href, url).toString();
-          if (shouldCrawlUrl(absoluteUrl)) {
-            links.add(absoluteUrl);
+    while (retries > 0) {
+      try {
+        console.log(`Fetch attempt ${4-retries} for: ${url}`);
+        response = await axios.get(url, {
+          timeout: CONFIG.requestTimeout,
+          maxContentLength: CONFIG.maxPageSize,
+          headers: {
+            'User-Agent': CONFIG.humanuserAgents[Math.floor(Math.random() * CONFIG.humanuserAgents.length)],
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          },
+          responseType: 'arraybuffer',
+          validateStatus: status => status < 500
+        });
+        console.log(`Fetch successful for: ${url} (status: ${response.status})`);
+        break; // Success, exit retry loop
+      } catch (e) {
+        console.error(`Fetch error for ${url}: ${e.message}`);
+        retries--;
+        if (retries === 0) {
+          throw e;
+        }
+        const backoffTime = 1000 * Math.pow(2, 3-retries);
+        console.log(`Retrying in ${backoffTime}ms...`);
+        await new Promise(resolve => setTimeout(resolve, backoffTime));
+      }
+    }
+    
+    // Quick status code check
+    if (response.status !== 200) {
+      console.log(`Non-200 response for ${url}: ${response.status}`);
+      if ([401, 403, 410].includes(response.status)) {
+        markUrlFailed(url, `HTTP error: ${response.status}`);
+      } else if (depth < CONFIG.maxDepth) {
+        await addToQueue(url, parentUrl, depth, 1);
+      }
+      return;
+    }
+    
+    // Efficient content type check
+    const contentType = response.headers['content-type'] || '';
+    if (!CONFIG.allowedContentTypes.some(type => contentType.includes(type))) {
+      markUrlFailed(url, `Unsupported content type: ${contentType}`);
+      return;
+    }
+    
+    // Optimized content conversion
+    const contentBuffer = Buffer.from(response.data);
+    let htmlContent;
+    
+    try {
+      htmlContent = contentBuffer.toString('utf8');
+    } catch (e) {
+      htmlContent = contentBuffer.toString('latin1');
+    }
+    
+    // Single cheerio parse for all operations
+    const $ = cheerio.load(htmlContent);
+    
+    // Extract data in a single pass
+    const title = $('title').text().trim() || url;
+    
+    // More targeted content extraction for better performance
+    const bodyText = $('article, main, .content, [role="main"]').text() || 
+                     $('p, h1, h2, h3, h4, h5, h6').text() || 
+                     $('body').text();
+    
+    // Optimize link extraction if depth allows
+    if (depth < CONFIG.maxDepth) {
+      // Use Set for deduplication
+      const links = new Set();
+      const domain = extractDomain(url);
+      
+      // More efficient link selection
+      $('a[href]:not([rel="nofollow"])').each((_, link) => {
+        const href = $(link).attr('href');
+        if (href) {
+          try {
+            const absoluteUrl = new URL(href, url).toString();
+            if (shouldCrawlUrl(absoluteUrl)) {
+              links.add(absoluteUrl);
+            }
+          } catch {
+            // Skip invalid URLs
           }
+        }
+      });
+      
+      // Process links in batch with Map to track domains
+      const linksByDomain = new Map();
+      
+      // Group links by domain for prioritization
+      for (const link of links) {
+        try {
+          const linkDomain = extractDomain(link);
+          if (!linksByDomain.has(linkDomain)) {
+            linksByDomain.set(linkDomain, []);
+          }
+          linksByDomain.get(linkDomain).push(link);
         } catch {
           // Skip invalid URLs
         }
       }
-    });
-    
-    // Process links in batch with Map to track domains
-    const linksByDomain = new Map();
-    
-    // Group links by domain for prioritization
-    for (const link of links) {
-      try {
-        const linkDomain = extractDomain(link);
-        if (!linksByDomain.has(linkDomain)) {
-          linksByDomain.set(linkDomain, []);
-        }
-        linksByDomain.get(linkDomain).push(link);
-      } catch {
-        // Skip invalid URLs
-      }
-    }
-    
-    // Add links with prioritization and limiting per domain
-    const linkPromises = [];
-    for (const [linkDomain, domainLinks] of linksByDomain) {
-      // Limit links per domain for better distribution
-      const maxLinksPerDomain = 10;
-      const selectedLinks = domainLinks.slice(0, maxLinksPerDomain);
       
-      for (const link of selectedLinks) {
-        const priority = calculateUrlPriority(link, depth + 1);
-        linkPromises.push(addToQueue(link, url, depth + 1, priority));
+      // Add links with prioritization and limiting per domain
+      const linkPromises = [];
+      for (const [linkDomain, domainLinks] of linksByDomain) {
+        // Limit links per domain for better distribution
+        const maxLinksPerDomain = 10;
+        const selectedLinks = domainLinks.slice(0, maxLinksPerDomain);
+        
+        for (const link of selectedLinks) {
+          const priority = calculateUrlPriority(link, depth + 1);
+          linkPromises.push(addToQueue(link, url, depth + 1, priority));
+        }
       }
+      
+      await Promise.all(linkPromises);
+      console.log(`Found ${links.size} links, added to queue`);
     }
     
-    await Promise.all(linkPromises);
-    console.log(`Found ${links.size} links, added to queue`);
+    // Skip if content too short
+    if (bodyText.length < CONFIG.minContentLength) {
+      return;
+    }
+    
+    // Classify content
+    const topics = classifyContent(
+      title, 
+      bodyText,
+      CONFIG.minTopicMatchScore,
+      CONFIG.topicWeights
+    );
+    
+    if (Object.keys(topics).length < CONFIG.minTopicsRequired) {
+      return;
+    }
+    
+    // Create hash for deduplication
+    const contentHash = crypto.createHash('sha256').update(htmlContent).digest('hex');
+    
+    // Buffer the content for batch database insert
+    await bufferPage(
+      url,
+      title,
+      htmlContent,
+      contentHash,
+      htmlContent.length,
+      topics
+    );
+  } finally {
+    // Clear the timeout
+    clearTimeout(timeout);
   }
-  
-  // Skip if content too short
-  if (bodyText.length < CONFIG.minContentLength) {
-    return;
-  }
-  
-  // Classify content
-  const topics = classifyContent(
-    title, 
-    bodyText,
-    CONFIG.minTopicMatchScore,
-    CONFIG.topicWeights
-  );
-  
-  if (Object.keys(topics).length < CONFIG.minTopicsRequired) {
-    return;
-  }
-  
-  // Create hash for deduplication
-  const contentHash = crypto.createHash('sha256').update(htmlContent).digest('hex');
-  
-  // Buffer the content for batch database insert
-  await bufferPage(
-    url,
-    title,
-    htmlContent,
-    contentHash,
-    htmlContent.length,
-    topics
-  );
 }
 
 /**
@@ -766,6 +832,16 @@ function getAdditionalSeeds() {
 async function startCrawler(seedUrls, callbacks = {}) {
   console.log('Starting crawler');
   
+  // Small delay to ensure database is fully initialized
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  
+  // Check if database functions are available
+  if (!database || !insertPage || !addToQueue || !getNextBatchFromQueue || 
+      !markUrlInProgress || !markUrlFailed || !urlExists || !queueExists) {
+    console.error("ERROR: Database functions not available. Crawler cannot start.");
+    return;
+  }
+  
   // Set up callbacks
   const onPageProcessed = callbacks.onPageProcessed || (() => {});
   const onQueueUpdate = callbacks.onQueueUpdate || (() => {});
@@ -794,8 +870,23 @@ async function startCrawler(seedUrls, callbacks = {}) {
   let emptyBatchCount = 0;
   let processed = 0;
   let startTime = Date.now();
+  let lastProgressTime = Date.now();  // Track when we last made progress
   
   while (running) {
+    // Add a failsafe check - if no progress in 2 minutes, reset system
+    const timeSinceProgress = Date.now() - lastProgressTime;
+    if (timeSinceProgress > 120000) {  // 2 minutes
+      console.error(`ALERT: No crawling progress in ${timeSinceProgress/1000} seconds. Resetting crawler state...`);
+      
+      // Reset domain locks
+      domainCounts.clear();
+      robotsTxtCache.clear();
+      
+      // Add more seeds to try to restart
+      await addSeedUrlsToQueue(originalSeeds.slice(0, 5));
+      lastProgressTime = Date.now();
+    }
+    
     // Get queue size for reporting
     try {
       const queueSize = await getQueueSize();
@@ -826,7 +917,10 @@ async function startCrawler(seedUrls, callbacks = {}) {
     }
     
     const batchProcessed = await processBatch(CONFIG.concurrentRequests, (url, success) => {
-      if (success) processed++;
+      if (success) {
+        processed++;
+        lastProgressTime = Date.now();  // Update progress timestamp
+      }
       onPageProcessed(url, success);
     });
     
@@ -886,74 +980,59 @@ async function addSeedUrlsToQueue(seedUrls) {
  * Process a batch of URLs from the queue with optimized concurrency
  */
 async function processBatch(batchSize, onPageProcessed = () => {}) {
-  // Get next batch with improved domain balancing
-  const batch = await getNextBatchFromQueue(batchSize);
-  
-  if (batch.length === 0) {
-    return false;
-  }
-  
-  console.log(`Processing batch of ${batch.length} URLs`);
-  
-  // Mark URLs as in progress in bulk
-  const urls = batch.map(item => item.url);
-  markUrlInProgress(urls);
-  
-  // Group by domain for better concurrency management
-  const byDomain = new Map();
-  for (const item of batch) {
-    try {
-      const domain = extractDomain(item.url);
-      if (!byDomain.has(domain)) {
-        byDomain.set(domain, []);
-      }
-      byDomain.get(domain).push(item);
-    } catch {
-      // Process invalid URLs individually
-      processSinglePage(item.url, item.parent_url, item.depth, onPageProcessed);
-    }
-  }
-  
-  // Process domains in parallel but limit concurrency within each domain
-  const domainPromises = [];
-  for (const [domain, items] of byDomain.entries()) {
-    domainPromises.push(processDomainBatch(domain, items, onPageProcessed));
-  }
-  
-  await Promise.all(domainPromises);
-  
-  // Save buffer if it has enough items
-  if (pageBuffer.length >= CONFIG.pageBufferSize / 2) {
-    await savePageBuffer();
-  }
-  
-  return true;
-}
-
-/**
- * Process all URLs for a single domain with controlled concurrency
- */
-async function processDomainBatch(domain, items, onPageProcessed) {
-  const concurrency = CONFIG.maxConcurrentRequestsPerDomain;
-  const queue = [...items];
-  const activePromises = new Set();
-  
-  // Process queue with controlled concurrency
-  while (queue.length > 0 || activePromises.size > 0) {
-    // Fill up to concurrency limit
-    while (queue.length > 0 && activePromises.size < concurrency) {
-      const item = queue.shift();
-      const promise = processSinglePage(item.url, item.parent_url, item.depth, onPageProcessed)
-        .then(() => {
-          activePromises.delete(promise);
-        });
-      activePromises.add(promise);
+  try {
+    // Get next batch with improved domain balancing
+    const batch = await getNextBatchFromQueue(batchSize);
+    
+    if (!batch || batch.length === 0) {
+      return false;
     }
     
-    // Wait for at least one promise to complete if we've reached the limit
-    if (activePromises.size >= concurrency) {
-      await Promise.race(activePromises);
+    console.log(`Processing batch of ${batch.length} URLs`);
+    
+    // Mark URLs as in progress in bulk
+    const urls = batch.map(item => item.url);
+    
+    try {
+      await markUrlInProgress(urls);
+    } catch (error) {
+      console.error("Error marking URLs as in progress:", error);
+      // Continue anyway to process the batch
     }
+    
+    // Process each URL individually to avoid one failure affecting others
+    const promises = [];
+    for (const item of batch) {
+      // Skip null/undefined items
+      if (!item || !item.url) continue;
+      
+      // Process URLs individually for better resilience
+      promises.push(
+        processSinglePage(item.url, item.parent_url, item.depth, onPageProcessed)
+          .catch(error => {
+            console.error(`Error processing ${item.url}:`, error.message);
+            // Still count as processed
+            onPageProcessed(item.url, false);
+          })
+      );
+    }
+    
+    // Wait for all URLs to be processed
+    await Promise.all(promises);
+    
+    // Save buffer if it has enough items
+    if (pageBuffer.length >= CONFIG.pageBufferSize / 2) {
+      try {
+        await savePageBuffer();
+      } catch (error) {
+        console.error("Error saving page buffer:", error);
+      }
+    }
+    
+    return true;
+  } catch (error) {
+    console.error("Error in processBatch:", error);
+    return false;
   }
 }
 
