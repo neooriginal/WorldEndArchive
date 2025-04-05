@@ -1,5 +1,11 @@
 # WORLDENDARCHIVE - SURVIVAL GUIDE
 
+## CONTENTS
+
+1. [Survival Guide](#immediate-priorities)
+2. [Using the Archive](#using-the-archive)
+3. [Command-Line Reader](#command-line-reader)
+
 ## IMMEDIATE PRIORITIES
 
 1. **BREATHE** - Take slow, deep breaths. 4 counts in, hold 4 counts, 4 counts out.
@@ -23,12 +29,47 @@
 - **Water purification**: Boil for 1 minute (3 minutes at high altitude) or use purification tablets.
 - **Conserve energy**: Rest frequently when performing physical tasks.
 
-## USING THIS ARCHIVE
+## USING THE ARCHIVE
 
 - The WorldEndArchive contains knowledge that may help you rebuild or survive.
 - Search for practical topics first: medicine, agriculture, water purification, tool making.
 - This system was designed to work offline and with minimal power requirements.
 - Preserve battery power when possible.
+
+## COMMAND-LINE READER
+
+For optimal performance with large archives or on systems with limited resources, use the command-line reader:
+
+### Requirements
+
+- Python 3.6 or newer
+
+### Usage
+
+1. Run the reader.py file directly:
+
+   ```
+   python reader.py
+   ```
+
+2. The reader will automatically:
+
+   - Use a JSON file specified as command-line argument (if provided)
+   - Look for JSON files in the current directory
+   - Use the only JSON file if exactly one is found
+   - Prompt you to choose if multiple JSON files are found
+   - Ask for a file path if no JSON files are found
+
+3. Use the interactive menu to search, browse by topic, or view statistics.
+
+### Features
+
+- Low memory usage even with archives of several GB
+- Full search functionality
+- Topic filtering
+- Ability to save HTML content from pages
+- Works on any system with Python (Windows, macOS, Linux)
+- Automatic file detection in the current directory
 
 ## MENTAL RESILIENCE
 
@@ -60,4 +101,4 @@
 
 ---
 
-*This guide is part of the WorldEndArchive project. May it serve you well in times of need.* 
+_This guide is part of the WorldEndArchive project. May it serve you well in times of need._
