@@ -6,8 +6,8 @@
 
 ## 📡 Current Network Status
 
-| Region | Active Devices | Last Verified | Status |
-|--------|---------------|--------------|--------|
+| Region | Active Devices | Last Verified | Status | Size |
+|--------|---------------|--------------|--------|--------|
 
 
 ## 📍 Device Locations
