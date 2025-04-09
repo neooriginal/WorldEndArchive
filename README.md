@@ -74,11 +74,11 @@ WorldEndArchive uses a two-component architecture:
 
 2. **Reader Component** (`Standalone Application`)
    - Provides search and retrieval functionality
-   - Works completely offline without server components
-   - Can be used with any web browser
+   - Works completely offline
+   - Can be used with any web pc using python
    - Located in the `/standalone` folder
 
-This separation ensures that the knowledge archiving process can run on a powerful server, while the knowledge retrieval can be performed on any device with a browser, even in offline scenarios.
+This separation ensures that the knowledge archiving process can run on a powerful server, while the knowledge retrieval can be performed on any device with python, even in offline scenarios.
 
 ## 🚀 Installation
 
@@ -142,17 +142,6 @@ Once the crawler has collected knowledge:
 2. **Download Database**: Use the download button to save the database file
 3. **Offline Access**: Copy the `/standalone` folder and your database file to any storage device
 
-### Standalone Mode
-
-For complete offline usage:
-
-1. Copy the entire `/standalone` folder to your storage medium (USB drive, etc.)
-2. Add your database file to the same location
-3. Open `standalone.html` in any modern web browser
-4. Select your database file when prompted
-
-This standalone mode works on any operating system with a web browser and requires no installation or internet connection. **Consider creating multiple copies on different storage media for redundancy.**
-
 ## ⚙️ Configuration
 
 Key configuration options in `.env`:
@@ -196,7 +185,7 @@ Contributions are welcome! This project represents a collective effort to preser
 In case of severe infrastructure disruption or societal instability:
 
 1. Use battery, solar, or generator power to run a computer
-2. Access the standalone version in the `/standalone` folder directly with any browser
+2. Access the standalone version in the `/standalone` folder directly 
 3. If you have multiple storage locations, use the database file with the most recent date
 4. Share your knowledge database with trusted communities to strengthen collective resilience
 
