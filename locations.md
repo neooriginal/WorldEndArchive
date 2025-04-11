@@ -6,13 +6,10 @@
 
 ## 📡 Current Network Status
 
-| Region | Active Devices | Last Verified | Status | Size |
-|--------|---------------|--------------|--------|--------|
+| Region               | Active Devices | Last Verified | Status  | Size   |
+|----------------------|----------------|----------------|---------|--------|
+| kings canyon - S24.406314 E131.816572 | 1              | 2025-04-11     | Online  | 1.5GB |
 
-
-## 📍 Device Locations
-
-For security reasons, exact locations are not publicly disclosed. General areas are listed below:
 
 
 ## 🔐 Access Protocol
