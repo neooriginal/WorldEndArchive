@@ -22,7 +22,7 @@
 
 <div align="center">
 
-  ![Hidden Devices](https://img.shields.io/badge/Hidden%20Devices-0-orange)
+  ![Hidden Devices](https://img.shields.io/badge/Hidden%20Devices-1-orange)
 
   Secure flash drives containing WorldEndArchive have been hidden in various locations worldwide.
   
