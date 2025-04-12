@@ -8,7 +8,7 @@
 
 | Region               | Active Devices | Last Verified | Status  | Size   |
 |----------------------|----------------|----------------|---------|--------|
-| kings canyon - S24.406314 E131.816572 | 1              | 2025-04-11     | Online  | 1.5GB |
+| kings canyon  | 1              | 2025-04-11     | Online  | 1.5GB |
 
 
 
