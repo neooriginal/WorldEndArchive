@@ -1044,3 +1044,130 @@ footer {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 } 
+
+/* System Information Panel */
+.system-info {
+  color: #33ff33;
+  line-height: 1.6;
+}
+
+.info-section {
+  margin-bottom: 25px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid rgba(51, 255, 51, 0.2);
+}
+
+.info-section:last-child {
+  border-bottom: none;
+}
+
+.info-section h3 {
+  color: #ff8c33;
+  margin-bottom: 10px;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.info-section ul {
+  list-style: none;
+  padding-left: 0;
+}
+
+.info-section li {
+  margin: 8px 0;
+  padding-left: 20px;
+  position: relative;
+}
+
+.info-section li::before {
+  content: '▶';
+  position: absolute;
+  left: 0;
+  color: #ff8c33;
+}
+
+/* Storage warning states */
+.stat-card.storage-warning {
+  border-color: #ffaa33;
+  background: rgba(255, 170, 51, 0.1);
+}
+
+.stat-card.storage-critical {
+  border-color: #ff3333;
+  background: rgba(255, 51, 51, 0.1);
+}
+
+.standalone-panel.storage-warning {
+  border-color: #ffaa33;
+  background: rgba(255, 170, 51, 0.05);
+}
+
+.standalone-panel.storage-full {
+  border-color: #ff3333;
+  background: rgba(255, 51, 51, 0.05);
+}
+
+/* Download button states */
+.standalone-button.download-live {
+  background: rgba(51, 255, 51, 0.1);
+  border-color: #33ff33;
+}
+
+.standalone-button.download-live::before {
+  content: '🔴 ';
+}
+
+/* Footer improvements */
+.footer-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.footer-info {
+  font-size: 11px;
+  color: rgba(51, 255, 51, 0.7);
+}
+
+/* Crawler details improvements */
+.crawler-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+  margin-top: 15px;
+  padding-top: 15px;
+  border-top: 1px solid rgba(51, 255, 51, 0.2);
+}
+
+.detail-item {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.detail-label {
+  color: rgba(51, 255, 51, 0.8);
+  margin-right: 10px;
+}
+
+/* Responsive improvements */
+@media (max-width: 768px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .crawler-details {
+    grid-template-columns: 1fr;
+  }
+  
+  .footer-content {
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .info-section li {
+    font-size: 13px;
+  }
+} 

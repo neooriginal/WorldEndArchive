@@ -1,5 +1,6 @@
 const path = require('path');
 const fs = require('fs');
+const { Readable } = require('stream');
 
 // Ensure data directory exists
 const DATA_DIR = path.join(__dirname, 'data');
@@ -15,14 +16,130 @@ let database = {
   pages: [],
   page_topics: [],
   crawl_queue: [], // Keep in memory but don't save to file
-  settings: {}
+  settings: {},
+  metadata: {
+    version: '2.0',
+    created: new Date().toISOString(),
+    last_updated: new Date().toISOString(),
+    total_pages: 0,
+    total_size: 0,
+    schema: {
+      page: {
+        id: 'number',
+        url: 'string',
+        title: 'string',
+        description: 'string',
+        html_content: 'string',
+        topics: 'string',
+        date_archived: 'string'
+      }
+    }
+  }
 };
 
 // Add more throttling mechanism for database saves
 let lastSaveTime = 0;
-const MIN_SAVE_INTERVAL = 30000; // Increased to 30 seconds between saves (was 10000)
+const MIN_SAVE_INTERVAL = 30000; // 30 seconds between saves
 let saveScheduled = false;
-let dirtyFlag = false; // Track if database has unsaved changes
+let dirtyFlag = false;
+
+// Browser-friendly streaming constants
+const CHUNK_SIZE = 1000; // Pages per chunk for browser processing
+const MAX_BROWSER_CHUNK = 500; // Smaller chunks for browser-friendly output
+
+/**
+ * Create a streaming JSON reader for browser consumption
+ * This allows browsers to process large JSON files in chunks
+ */
+function createBrowserFriendlyStream() {
+  let pageIndex = 0;
+  const totalPages = database.pages.length;
+  
+  return new Readable({
+    objectMode: false,
+    read() {
+      try {
+        if (pageIndex === 0) {
+          // Start with metadata and opening structure
+          this.push(JSON.stringify({
+            metadata: database.metadata,
+            total_pages: totalPages,
+            chunk_size: MAX_BROWSER_CHUNK,
+            chunks: Math.ceil(totalPages / MAX_BROWSER_CHUNK)
+          }) + '\n---SEPARATOR---\n');
+        }
+        
+        if (pageIndex < totalPages) {
+          const chunkEnd = Math.min(pageIndex + MAX_BROWSER_CHUNK, totalPages);
+          const chunk = database.pages.slice(pageIndex, chunkEnd);
+          
+          // Create browser-friendly chunk with topic data
+          const browserChunk = {
+            chunk_index: Math.floor(pageIndex / MAX_BROWSER_CHUNK),
+            pages: chunk.map(page => {
+              const pageTopics = database.page_topics
+                .filter(pt => pt.page_id === page.id)
+                .map(pt => pt.topic);
+              
+              return {
+                id: page.id,
+                url: page.url,
+                title: page.title,
+                description: extractDescription(page.html_content),
+                html_content: page.html_content,
+                topics: pageTopics.join(', '),
+                date_archived: page.date_archived,
+                content_size: page.content_size || page.html_content?.length || 0
+              };
+            })
+          };
+          
+          this.push(JSON.stringify(browserChunk) + '\n---SEPARATOR---\n');
+          pageIndex = chunkEnd;
+        } else {
+          // End of stream
+          this.push(null);
+        }
+      } catch (error) {
+        this.emit('error', error);
+      }
+    }
+  });
+}
+
+/**
+ * Extract a clean description from HTML content
+ */
+function extractDescription(htmlContent, maxLength = 200) {
+  if (!htmlContent) return '';
+  
+  try {
+    // Simple HTML stripping and text extraction
+    const strippedText = htmlContent
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '') // Remove scripts
+      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '') // Remove styles
+      .replace(/<[^>]*>/g, ' ') // Remove HTML tags
+      .replace(/\s+/g, ' ') // Normalize whitespace
+      .trim();
+    
+    if (strippedText.length <= maxLength) {
+      return strippedText;
+    }
+    
+    // Find a good breaking point near the max length
+    const truncated = strippedText.substring(0, maxLength);
+    const lastSpace = truncated.lastIndexOf(' ');
+    const lastPeriod = truncated.lastIndexOf('.');
+    
+    // Use the last sentence if possible, otherwise last word
+    const breakPoint = lastPeriod > maxLength * 0.7 ? lastPeriod + 1 : 
+                      lastSpace > maxLength * 0.7 ? lastSpace : maxLength;
+    
+    return strippedText.substring(0, breakPoint).trim() + (strippedText.length > breakPoint ? '...' : '');
+  } catch (error) {
+    return htmlContent.substring(0, maxLength) + '...';
+  }
+}
 
 // Initialize the database
 function initializeDatabase() {
@@ -84,6 +201,24 @@ function initializeNewDatabase() {
       'last_crawl_date': new Date(0).toISOString(),
       'total_pages': '0',
       'total_size_raw': '0'
+    },
+    metadata: {
+      version: '2.0',
+      created: new Date().toISOString(),
+      last_updated: new Date().toISOString(),
+      total_pages: 0,
+      total_size: 0,
+      schema: {
+        page: {
+          id: 'number',
+          url: 'string',
+          title: 'string',
+          description: 'string',
+          html_content: 'string',
+          topics: 'string',
+          date_archived: 'string'
+        }
+      }
     }
   };
   
@@ -145,23 +280,27 @@ function saveDatabase() {
   dirtyFlag = false;
 }
 
-// Actual save operation with optimized memory usage
+// Actual save operation with optimized memory usage and browser-friendly format
 function performSave() {
   try {
     console.log('Saving database to disk...');
     const startTime = Date.now();
     
-    // Create a simplified version for storage, but process in chunks to reduce memory usage
-    // We'll write directly to file in chunks to reduce memory pressure
+    // Update metadata before saving
+    database.metadata.last_updated = new Date().toISOString();
+    database.metadata.total_pages = database.pages.length;
+    database.metadata.total_size = database.pages.reduce((sum, p) => sum + (p.content_size || 0), 0);
+    
+    // Create a simplified version for storage with browser optimization
     const tempFile = JSON_FILE_PATH + '.tmp';
     const writeStream = fs.createWriteStream(tempFile);
     
-    // Start JSON object
+    // Write browser-friendly JSON structure
     writeStream.write('{\n');
+    writeStream.write('"metadata": ' + JSON.stringify(database.metadata, null, 2) + ',\n');
     writeStream.write('"pages": [\n');
     
-    // Process pages in chunks of 1000 to reduce memory usage
-    const CHUNK_SIZE = 1000;
+    // Process pages in chunks to reduce memory usage
     const totalPages = database.pages.length;
     
     // Track if we need to add a comma
@@ -176,7 +315,7 @@ function performSave() {
       pageTopicsMap.get(topicEntry.page_id).push(topicEntry.topic);
     }
     
-    // Write pages in chunks
+    // Write pages in chunks with browser-friendly structure
     for (let i = 0; i < totalPages; i += CHUNK_SIZE) {
       const chunk = database.pages.slice(i, i + CHUNK_SIZE);
       
@@ -187,22 +326,10 @@ function performSave() {
           ? pageTopicsMap.get(page.id).join(', ')
           : '';
           
-        // Simple description extraction (if needed)
-        let description = '';
-        if (page.html_content) {
-          // Extract first 200 chars for description (simple method)
-          const strippedText = page.html_content
-            .replace(/<[^>]*>/g, ' ')
-            .replace(/\s+/g, ' ')
-            .trim();
-            
-          description = strippedText.substring(0, 200);
-          if (description.length === 200) {
-            description += '...';
-          }
-        }
+        // Extract browser-friendly description
+        const description = extractDescription(page.html_content);
         
-        // Construct page JSON
+        // Construct browser-optimized page JSON
         const pageJson = {
           id: page.id,
           url: page.url,
@@ -210,7 +337,8 @@ function performSave() {
           description: description,
           html_content: page.html_content,
           topics: pageTopics,
-          date_archived: page.date_archived
+          date_archived: page.date_archived,
+          content_size: page.content_size || page.html_content?.length || 0
         };
         
         // Add comma if not the first item
@@ -220,15 +348,15 @@ function performSave() {
           isFirst = false;
         }
         
-        // Write the page JSON
-        writeStream.write(JSON.stringify(pageJson));
+        // Write the page JSON with proper indentation for readability
+        writeStream.write('  ' + JSON.stringify(pageJson));
       }
     }
     
     // Close the pages array and write settings
     writeStream.write('\n],\n');
-    writeStream.write('"settings": ' + JSON.stringify(database.settings));
-    writeStream.write('\n}');
+    writeStream.write('"settings": ' + JSON.stringify(database.settings, null, 2) + '\n');
+    writeStream.write('}');
     
     // Use promise to handle stream completion
     const streamFinished = new Promise((resolve, reject) => {
@@ -243,13 +371,28 @@ function performSave() {
     streamFinished.then(() => {
       fs.renameSync(tempFile, JSON_FILE_PATH);
       const timeElapsed = Date.now() - startTime;
-      console.log(`Database saved to disk in ${timeElapsed}ms`);
+      console.log(`Database saved to disk in ${timeElapsed}ms (${database.pages.length} pages, ${formatBytes(database.metadata.total_size)})`);
     }).catch(error => {
       console.error('Error writing database file:', error);
     });
   } catch (error) {
     console.error('Error during database save:', error);
   }
+}
+
+/**
+ * Format bytes to human readable format
+ */
+function formatBytes(bytes, decimals = 2) {
+  if (bytes === 0) return '0 B';
+  
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 }
 
 // Batch insert multiple pages at once (more efficient than individual inserts)
@@ -743,5 +886,6 @@ module.exports = {
   vacuumDatabase,
   saveCrawlerStats,
   batchInsertPages,
+  createBrowserFriendlyStream, // Add the new function to exports
   database
 }; 

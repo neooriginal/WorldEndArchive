@@ -19,50 +19,47 @@ const {
 } = require('./jsonDatabase');
 const { classifyContent } = require('./classifier');
 
-// Configuration settings
+// Enhanced configuration settings with reliability improvements
 const CONFIG = {
-  // Crawling parameters
-  maxDepth: 3,                    // Maximum depth to crawl
-  concurrentRequests: 15,         // Increased concurrent requests (was 10)
-  maxConcurrentRequestsPerDomain: 3, // Increased per domain limit (was 2)
-  requestTimeout: 10000,          // 10 seconds timeout (reduced from 15 seconds)
-  requestDelay: 200,              // Decreased delay for faster crawling (was 300)
-  respectRobotsTxt: false,        // Temporarily disable robots.txt checking as it's causing hangs
+  // Crawling parameters - tuned for reliability
+  maxDepth: 3,
+  concurrentRequests: 8,                // Reduced for better stability (was 15)
+  maxConcurrentRequestsPerDomain: 2,    // Reduced for better behavior (was 3)
+  requestTimeout: 15000,                // Increased timeout for stability (was 10000)
+  requestDelay: 500,                    // Increased delay for politeness (was 200)
+  respectRobotsTxt: false,              // Keep disabled for faster crawling
+  
+  // Retry settings for improved reliability
+  maxRetries: 3,
+  retryDelay: 2000,                     // Base delay for retries
+  exponentialBackoff: true,             // Use exponential backoff for retries
   
   // In-memory page buffer settings
-  pageBufferSize: 250,           // Increased buffer size for fewer disk writes (was 100)
+  pageBufferSize: 100,                  // Reduced for more frequent saves (was 250)
+  
+  // Connection pooling and reliability
+  maxSockets: 50,                       // Limit total sockets
+  maxSocketsPerHost: 8,                 // Limit per host
+  keepAlive: true,                      // Enable keep-alive
+  keepAliveTimeout: 30000,              // 30 second keep-alive
+  
+  // Error handling
+  maxConsecutiveErrors: 10,             // Stop domain after consecutive errors
+  errorCooldown: 300000,                // 5 minute cooldown for problematic domains
   
   humanuserAgents: [
-    // Chrome
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.137 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.137 Safari/537.36",
-    "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.137 Mobile Safari/537.36",
-  
-    // Firefox
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:115.0) Gecko/20100101 Firefox/115.0",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7; rv:115.0) Gecko/20100101 Firefox/115.0",
-    "Mozilla/5.0 (Android 12; Mobile; rv:115.0) Gecko/115.0 Firefox/115.0",
-  
-    // Safari
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.1 Safari/605.1.15",
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 16_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.3 Mobile/15E148 Safari/604.1",
-  
-    // Edge
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.137 Safari/537.36 Edg/112.0.1722.48",
-    
-    // Opera
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.137 Safari/537.36 OPR/98.0",
-  
-    // Older Devices/Browsers
-    "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1; Trident/4.0)",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7; rv:109.0) Gecko/20100101 Firefox/119.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36 Edg/118.0.2088.76"
   ],
   
-  // Content filtering
-  minTopicMatchScore: 2,          // Minimum score to consider a topic match
-  minTopicsRequired: 1,           // Minimum number of topics required to archive content
-  minContentLength: 500,          // Minimum content length in characters
+  // Content filtering - same as before
+  minTopicMatchScore: 2,
+  minTopicsRequired: 1,
+  minContentLength: 500,
   
-  // Topic importance weights (higher = more important)
   topicWeights: {
     'science': 2.0,
     'technology': 2.0,
@@ -75,36 +72,28 @@ const CONFIG = {
     'education': 1.8,
     'survival': 2.5,
     'computing': 1.8,
-    'entertainment': 0.6  // Lower priority for entertainment content
+    'entertainment': 0.6
   },
   
-  // Filters
-  allowedDomains: [],           // Empty means all domains, specific items restrict to those domains
-  excludedDomains: [           // Domains to explicitly exclude  
+  allowedDomains: [],
+  excludedDomains: [
     'facebook.com', 'twitter.com', 'instagram.com', 'pinterest.com',
     'youtube.com', 'linkedin.com', 'reddit.com', 'tiktok.com',
     'amazon.com', 'ebay.com', 'walmart.com', 'target.com', 'etsy.com',
-    // Additional entertainment-focused sites
     'netflix.com', 'hulu.com', 'disneyplus.com', 'hbomax.com',
     'peacocktv.com', 'primevideo.com', 'twitch.tv', 'ign.com',
     'gamespot.com', 'polygon.com', 'kotaku.com', 'tmz.com',
     'eonline.com', 'variety.com', 'hollywoodreporter.com', 'buzzfeed.com'
   ],
-  excludedExtensions: [        // File extensions to skip
+  excludedExtensions: [
     '.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx',
     '.zip', '.rar', '.7z', '.tar', '.gz', '.mp3', '.mp4', '.avi',
     '.mov', '.wmv', '.flv', '.jpg', '.jpeg', '.png', '.gif', '.bmp',
     '.tiff', '.svg', '.webp', '.ico', '.css', '.js', '.json', '.xml'
   ],
   allowedPrefix: ['http://', 'https://'],
-  
-  // Max size to store (50MB)
   maxPageSize: 50 * 1024 * 1024,
-  
-  // Data directory
   dataDir: path.join(__dirname, 'data'),
-
-  // New configuration parameters
   maxPagesPerDomain: 50,
   allowedContentTypes: [
     'text/html',
@@ -112,6 +101,31 @@ const CONFIG = {
     'text/plain'
   ]
 };
+
+// Create axios instance with proper connection management
+const httpClient = axios.create({
+  timeout: CONFIG.requestTimeout,
+  maxRedirects: 3,
+  maxContentLength: CONFIG.maxPageSize,
+  validateStatus: status => status < 500, // Don't throw on 4xx errors
+  httpAgent: require('http').globalAgent,
+  httpsAgent: require('https').globalAgent
+});
+
+// Configure connection pooling
+httpClient.defaults.httpAgent.maxSockets = CONFIG.maxSockets;
+httpClient.defaults.httpAgent.maxSocketsPerHost = CONFIG.maxSocketsPerHost;
+httpClient.defaults.httpAgent.keepAlive = CONFIG.keepAlive;
+httpClient.defaults.httpAgent.keepAliveMsecs = CONFIG.keepAliveTimeout;
+
+httpClient.defaults.httpsAgent.maxSockets = CONFIG.maxSockets;
+httpClient.defaults.httpsAgent.maxSocketsPerHost = CONFIG.maxSocketsPerHost;
+httpClient.defaults.httpsAgent.keepAlive = CONFIG.keepAlive;
+httpClient.defaults.httpsAgent.keepAliveMsecs = CONFIG.keepAliveTimeout;
+
+// Error tracking for domains
+const domainErrorCounts = new Map();
+const domainCooldowns = new Map();
 
 // Store robots.txt data
 const robotsTxtCache = new Map();
@@ -317,7 +331,7 @@ async function isAllowedByRobotsTxt(url) {
         
         // Race the actual request against the timeout
         const response = await Promise.race([
-          axios.get(robotsUrl, { 
+          httpClient.get(robotsUrl, { 
             timeout: 5000, // Shorter timeout specifically for robots.txt
             headers: {
               'User-Agent': CONFIG.humanuserAgents[Math.floor(Math.random() * CONFIG.humanuserAgents.length)]
@@ -497,6 +511,94 @@ function calculateUrlPriority(url, depth) {
 }
 
 /**
+ * Check if a domain is in cooldown due to errors
+ */
+function isDomainInCooldown(domain) {
+  const cooldownEnd = domainCooldowns.get(domain);
+  if (cooldownEnd && Date.now() < cooldownEnd) {
+    return true;
+  }
+  if (cooldownEnd && Date.now() >= cooldownEnd) {
+    // Cooldown expired, reset error count
+    domainCooldowns.delete(domain);
+    domainErrorCounts.set(domain, 0);
+  }
+  return false;
+}
+
+/**
+ * Record an error for a domain
+ */
+function recordDomainError(domain) {
+  const count = domainErrorCounts.get(domain) || 0;
+  domainErrorCounts.set(domain, count + 1);
+  
+  if (count + 1 >= CONFIG.maxConsecutiveErrors) {
+    console.log(`Domain ${domain} hit error limit, entering cooldown for ${CONFIG.errorCooldown / 60000} minutes`);
+    domainCooldowns.set(domain, Date.now() + CONFIG.errorCooldown);
+  }
+}
+
+/**
+ * Reset error count for successful crawl
+ */
+function resetDomainErrors(domain) {
+  domainErrorCounts.set(domain, 0);
+}
+
+/**
+ * Enhanced request function with retries and better error handling
+ */
+async function makeRequest(url, retryCount = 0) {
+  const domain = extractDomain(url);
+  
+  // Check domain cooldown
+  if (isDomainInCooldown(domain)) {
+    throw new Error(`Domain ${domain} is in cooldown due to errors`);
+  }
+  
+  try {
+    const userAgent = CONFIG.humanuserAgents[Math.floor(Math.random() * CONFIG.humanuserAgents.length)];
+    
+    const response = await httpClient.get(url, {
+      headers: {
+        'User-Agent': userAgent,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'DNT': '1',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1'
+      },
+      responseType: 'arraybuffer'
+    });
+    
+    // Reset error count on success
+    resetDomainErrors(domain);
+    
+    return response;
+  } catch (error) {
+    console.error(`Request failed for ${url} (attempt ${retryCount + 1}):`, error.message);
+    
+    // Record domain error
+    recordDomainError(domain);
+    
+    // Retry logic
+    if (retryCount < CONFIG.maxRetries) {
+      const delay = CONFIG.exponentialBackoff 
+        ? CONFIG.retryDelay * Math.pow(2, retryCount)
+        : CONFIG.retryDelay;
+      
+      console.log(`Retrying ${url} in ${delay}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return makeRequest(url, retryCount + 1);
+    }
+    
+    throw error;
+  }
+}
+
+/**
  * Crawl a single page
  * @param {string} url - URL to crawl
  * @param {string} parentUrl - Parent URL that linked to this one
@@ -611,19 +713,7 @@ async function processCrawl(url, parentUrl, depth) {
     while (retries > 0) {
       try {
         console.log(`Fetch attempt ${4-retries} for: ${url}`);
-        response = await axios.get(url, {
-          timeout: CONFIG.requestTimeout,
-          maxContentLength: CONFIG.maxPageSize,
-          headers: {
-            'User-Agent': CONFIG.humanuserAgents[Math.floor(Math.random() * CONFIG.humanuserAgents.length)],
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
-          },
-          responseType: 'arraybuffer',
-          validateStatus: status => status < 500
-        });
+        response = await makeRequest(url, retries);
         console.log(`Fetch successful for: ${url} (status: ${response.status})`);
         break; // Success, exit retry loop
       } catch (e) {

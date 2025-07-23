@@ -6,7 +6,8 @@ const {
   searchPages, 
   getPageContent, 
   getStats, 
-  vacuumDatabase
+  vacuumDatabase,
+  createBrowserFriendlyStream
 } = require('./jsonDatabase');
 const { 
   getAvailableTopics, 
@@ -173,10 +174,11 @@ router.post('/maintenance', async (req, res) => {
   }
 });
 
-// Download database endpoint
+// Download database endpoint with streaming support
 router.get('/download-db', (req, res) => {
   try {
     const dbPath = path.join(__dirname, 'data', 'worldend_archive.json');
+    const streamMode = req.query.stream === 'true';
     
     // Check if database exists
     if (!fs.existsSync(dbPath)) {
@@ -197,45 +199,47 @@ router.get('/download-db', (req, res) => {
       res.setHeader('Content-Type', 'application/json');
       res.setHeader('Content-Disposition', 'attachment; filename=worldend_archive.json');
       res.setHeader('Content-Length', fileSizeInBytes);
-      res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
+      res.setHeader('Cache-Control', 'no-cache'); // Don't cache during active crawling
       return res.end();
     }
 
-    
     // Set headers for download
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Content-Disposition', 'attachment; filename=worldend_archive.json');
     res.setHeader('Content-Length', fileSizeInBytes);
-    res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
-    res.setHeader('Transfer-Encoding', 'chunked');
+    res.setHeader('Cache-Control', 'no-cache'); // Don't cache during active crawling
+    
+    // Use streaming if requested and file is large
+    if (streamMode || fileSizeInBytes > 50 * 1024 * 1024) { // Stream for files > 50MB
+      console.log('Using streaming download for large database file');
+      res.setHeader('Transfer-Encoding', 'chunked');
+      res.setHeader('X-Stream-Mode', 'true');
+    }
     
     // Create read stream with high water mark for better performance
     const fileStream = fs.createReadStream(dbPath, {
-      highWaterMark: 64 * 1024 // 64KB chunks for better performance
+      highWaterMark: 256 * 1024 // 256KB chunks for better performance with large files
     });
     
     // Handle potential errors
     fileStream.on('error', (error) => {
-      isDbDownloading = false; // Reset flag
-     
+      console.error('Database download error:', error);
       if (!res.headersSent) {
         res.status(500).json({ error: 'Error streaming database file' });
       } else {
-        // If headers already sent, we need to destroy the connection
         res.destroy();
       }
     });
     
     // Handle when download completes
     fileStream.on('end', () => {
-      isDbDownloading = false; // Reset flag
+      console.log('Database download completed');
     });
     
     // Handle client disconnect
     req.on('close', () => {
-      if (isDbDownloading) {
-        fileStream.destroy(); // Close the file stream
-        isDbDownloading = false; // Reset flag
+      if (!fileStream.destroyed) {
+        fileStream.destroy();
         console.log('Database download canceled: Client disconnected');
       }
     });
@@ -243,9 +247,141 @@ router.get('/download-db', (req, res) => {
     // Start the download
     fileStream.pipe(res);
   } catch (error) {
-    isDbDownloading = false; // Reset flag
     console.error('Database download error:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// New browser-friendly streaming endpoint
+router.get('/download-db-chunks', (req, res) => {
+  try {
+    // Set headers for chunked JSON download
+    res.setHeader('Content-Type', 'application/x-ndjson'); // Newline-delimited JSON
+    res.setHeader('Content-Disposition', 'attachment; filename=worldend_archive_chunks.ndjson');
+    res.setHeader('Transfer-Encoding', 'chunked');
+    res.setHeader('X-Chunked-Format', 'true');
+    res.setHeader('Cache-Control', 'no-cache');
+    
+    // Check if crawler is actively writing
+    if (crawlerStats.isRunning) {
+      res.setHeader('X-Crawler-Active', 'true');
+    }
+    
+    // Create browser-friendly stream
+    const browserStream = createBrowserFriendlyStream();
+    
+    // Handle errors
+    browserStream.on('error', (error) => {
+      console.error('Browser-friendly download error:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Error creating browser-friendly stream' });
+      } else {
+        res.destroy();
+      }
+    });
+    
+    // Handle completion
+    browserStream.on('end', () => {
+      console.log('Browser-friendly download completed');
+    });
+    
+    // Handle client disconnect
+    req.on('close', () => {
+      if (!browserStream.destroyed) {
+        browserStream.destroy();
+        console.log('Browser-friendly download canceled: Client disconnected');
+      }
+    });
+    
+    // Start streaming
+    browserStream.pipe(res);
+  } catch (error) {
+    console.error('Browser-friendly download error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Enhanced stats endpoint with real-time data
+router.get('/stats-realtime', async (req, res) => {
+  try {
+    const dbStats = await getStats();
+    const dbPath = path.join(__dirname, 'data', 'worldend_archive.json');
+    
+    // Get real-time file information
+    let currentFileSize = 0;
+    let lastModified = null;
+    
+    if (fs.existsSync(dbPath)) {
+      const fileStats = fs.statSync(dbPath);
+      currentFileSize = fileStats.size;
+      lastModified = fileStats.mtime.toISOString();
+    }
+    
+    // Calculate storage progress
+    const maxSize = 10 * 1024 * 1024 * 1024; // 10GB
+    const storageProgress = (currentFileSize / maxSize) * 100;
+    
+    // Format enhanced stats
+    const stats = {
+      database: {
+        totalPages: parseInt(dbStats.total_pages || 0),
+        totalSizeRaw: formatSize(parseInt(dbStats.total_size_raw || 0)),
+        currentFileSize: formatSize(currentFileSize),
+        currentFileSizeBytes: currentFileSize,
+        storageProgress: Math.min(storageProgress, 100),
+        maxSizeBytes: maxSize,
+        maxSize: formatSize(maxSize),
+        lastModified: lastModified,
+        lastCrawlDate: dbStats.last_crawl_date,
+        topTopics: dbStats.topTopics || []
+      },
+      crawler: {
+        isRunning: crawlerStats.isRunning || false,
+        queueSize: crawlerStats.queueSize || 0,
+        processedUrls: crawlerStats.processedUrls || parseInt(dbStats.total_pages || 0),
+        crawlSpeed: crawlerStats.crawlSpeed || 0,
+        totalRuntime: crawlerStats.totalRuntime || 0,
+        successRate: crawlerStats.successRate || 100,
+        lastProcessedUrl: crawlerStats.lastProcessedUrl || null
+      },
+      queue: dbStats.queue || { pending: 0, in_progress: 0, failed: 0 },
+      system: {
+        canDownload: fs.existsSync(dbPath),
+        downloadRecommendation: currentFileSize > 100 * 1024 * 1024 ? 'streaming' : 'direct'
+      }
+    };
+    
+    res.json(stats);
+  } catch (error) {
+    console.error('Real-time stats error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Health check endpoint
+router.get('/health', (req, res) => {
+  try {
+    const dbPath = path.join(__dirname, 'data', 'worldend_archive.json');
+    const dbExists = fs.existsSync(dbPath);
+    
+    res.json({
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      database: {
+        exists: dbExists,
+        size: dbExists ? fs.statSync(dbPath).size : 0
+      },
+      crawler: {
+        running: crawlerStats.isRunning || false,
+        queue_size: crawlerStats.queueSize || 0
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'unhealthy',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
   }
 });
 

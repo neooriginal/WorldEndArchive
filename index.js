@@ -14,8 +14,8 @@ const axios = require('axios');
 
 // Configuration
 const DEFAULT_PORT = process.env.PORT || 3000;
-const MAX_DB_SIZE_BYTES = (parseInt(process.env.MAX_DB_SIZE_MB) || 8192) * 1024 * 1024; // Convert MB to bytes
-const INFINITE_CRAWL = process.env.INFINITE_CRAWL === 'false';
+const MAX_DB_SIZE_BYTES = (parseInt(process.env.MAX_DB_SIZE_MB) || 10240) * 1024 * 1024; // Default to 10GB
+const INFINITE_CRAWL = process.env.INFINITE_CRAWL !== 'false'; // Enable infinite crawl by default
 
 // Crawler state
 let crawlerRunning = false;
@@ -31,7 +31,6 @@ const app = express();
 
 // Middleware
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
 
 // API routes - simplified to only provide database download
 app.get('/api/download-db', (req, res) => {
@@ -68,17 +67,15 @@ app.get('/api/download-db', (req, res) => {
   }
 });
 
-// Serve the standalone app at the root
+// Serve the main interface
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'standalone', 'standalone.html'));
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Serve sql-wasm.js file
-app.get('/sql-wasm.js', (req, res) => {
-  res.sendFile(path.join(__dirname, 'standalone', 'sql-wasm.js'));
-});
+// Serve static files
+app.use(express.static(path.join(__dirname, 'public')));
 
-// Serve the "Use standalone version" page for any other route
+// Catch-all route for crawler mode information
 app.get('*', (req, res) => {
   res.send(`
     <html>
@@ -100,23 +97,42 @@ app.get('*', (req, res) => {
             border: 1px solid #33ff33;
             padding: 10px 20px;
             display: inline-block;
-            margin-top: 20px;
+            margin: 10px;
             border-radius: 3px;
           }
           a:hover { background-color: rgba(51, 255, 51, 0.2); }
+          .status { margin: 20px 0; }
         </style>
       </head>
       <body>
-        <h1>WorldEndArchive - Crawler Mode</h1>
-        <p>This instance is in crawler-only mode.</p>
-        <p>To search and browse the archive, please use the standalone version.</p>
-        <a href="/">Go to Standalone Version</a>
-        <p>Or download the database file to use with the offline standalone version:</p>
-        <a href="/api/download-db">Download Database</a>
+        <h1>WorldEndArchive - Knowledge Preservation System</h1>
+        <div class="status">
+          <p>🤖 Crawler Mode Active - Archiving Knowledge for Posterity</p>
+          <p>Current database: <strong>${formatBytes(getDatabaseSize())}</strong> / 10GB</p>
+        </div>
+        <p>This system continuously crawls and archives important knowledge from the web.</p>
+        <a href="/">View Status Dashboard</a>
+        <a href="/api/download-db">Download Archive Database</a>
+        <p><small>The standalone reader is available in the downloaded archive.</small></p>
       </body>
     </html>
   `);
 });
+
+/**
+ * Get current database file size
+ */
+function getDatabaseSize() {
+  try {
+    const dbPath = path.join(__dirname, 'data', 'worldend_archive.json');
+    if (fs.existsSync(dbPath)) {
+      return fs.statSync(dbPath).size;
+    }
+    return 0;
+  } catch (error) {
+    return 0;
+  }
+}
 
 /**
  * Initialize the application
@@ -204,7 +220,17 @@ async function checkDatabaseSizeLimit() {
     }
     
     const stats = fs.statSync(dbPath);
-    return stats.size >= MAX_DB_SIZE_BYTES;
+    const currentSize = stats.size;
+    const limitReached = currentSize >= MAX_DB_SIZE_BYTES;
+    
+    if (limitReached) {
+      console.log(`Database size limit reached: ${formatBytes(currentSize)} / ${formatBytes(MAX_DB_SIZE_BYTES)}`);
+    } else {
+      const remaining = MAX_DB_SIZE_BYTES - currentSize;
+      console.log(`Database size: ${formatBytes(currentSize)} / ${formatBytes(MAX_DB_SIZE_BYTES)} (${formatBytes(remaining)} remaining)`);
+    }
+    
+    return limitReached;
   } catch (error) {
     console.error('Error checking database size:', error);
     return false;
@@ -212,7 +238,7 @@ async function checkDatabaseSizeLimit() {
 }
 
 /**
- * Start automatic crawler
+ * Start automatic crawler with improved continuous operation
  */
 async function startAutomaticCrawler() {
   if (crawlerRunning) {
@@ -223,13 +249,16 @@ async function startAutomaticCrawler() {
   try {
     // Check if database size limit is reached
     const sizeLimitReached = await checkDatabaseSizeLimit();
-    if (sizeLimitReached && !INFINITE_CRAWL) {
-      console.log('Database size limit reached. Stopping crawler.');
+    if (sizeLimitReached) {
+      console.log('Database size limit reached. Crawler will not start.');
       return;
     }
 
     crawlerRunning = true;
     crawlStartTime = Date.now();
+    
+    console.log('Starting automatic crawler...');
+    console.log(`Maximum database size: ${formatBytes(MAX_DB_SIZE_BYTES)}`);
     
     // Get recommended seed URLs
     const seedUrls = await getRecommendedSeeds();
@@ -237,36 +266,48 @@ async function startAutomaticCrawler() {
     // Start crawler with seed URLs
     await startCrawler(seedUrls);
     
-    // Set up interval to check crawler status
+    // Set up interval to check crawler status and manage continuous operation
     crawlerInterval = setInterval(async () => {
       try {
         const queueSize = await getQueueSize();
         const sizeLimitReached = await checkDatabaseSizeLimit();
         
-        // Stop crawler if size limit reached and not in infinite mode
-        if (sizeLimitReached && !INFINITE_CRAWL) {
-          console.log('Database size limit reached. Stopping crawler.');
-          stopCrawler();
-          return;
-        }
-        
         // Update crawler stats
+        const runtime = crawlStartTime ? Math.floor((Date.now() - crawlStartTime) / 1000) : 0;
         const stats = {
           isRunning: crawlerRunning,
           queueSize,
           processedUrls: pagesProcessed,
           failedUrls: pagesFailed,
           crawlSpeed: lastCrawlSpeed,
-          totalRuntime: Math.floor((Date.now() - crawlStartTime) / 1000) + totalRuntime
+          totalRuntime: runtime + totalRuntime,
+          sizeLimitReached
         };
         
         await saveCrawlerStats(stats);
         api.updateCrawlerStats(stats);
         
+        // Stop crawler if size limit reached
+        if (sizeLimitReached) {
+          console.log('Database size limit reached. Stopping crawler gracefully...');
+          stopCrawler();
+          return;
+        }
+        
+        // Restart crawler if queue is empty but we haven't reached size limit
+        if (queueSize === 0 && crawlerRunning) {
+          console.log('Queue is empty but size limit not reached. Adding more seed URLs...');
+          const additionalSeeds = await getRecommendedSeeds();
+          // Re-add original seeds to continue crawling
+          for (const url of additionalSeeds.slice(0, 10)) {
+            await addToQueue(url, null, 0, 10);
+          }
+        }
+        
       } catch (error) {
-        console.error('Error updating crawler stats:', error);
+        console.error('Error in crawler monitoring interval:', error);
       }
-    }, 5000); // Update every 5 seconds
+    }, 10000); // Check every 10 seconds
     
   } catch (error) {
     console.error('Error starting crawler:', error);

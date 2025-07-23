@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WorldEndArchive - Crawler Mode</title>
+  <title>WorldEndArchive - Knowledge Preservation System</title>
   
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -27,21 +27,22 @@
         <div class="icon-radiation"></div>
         <h1>WorldEndArchive</h1>
       </div>
-      <p class="tagline">KNOWLEDGE PRESERVATION SYSTEM · CRAWLER MODE</p>
+      <p class="tagline">KNOWLEDGE PRESERVATION SYSTEM · CONTINUOUS ARCHIVAL MODE</p>
     </header>
     
     <!-- Main Content -->
     <main>
-      <!-- Standalone App Notice -->
+      <!-- System Status Panel -->
       <div class="standalone-panel">
-        <h2 class="standalone-title">ATTENTION: CRAWLER MODE ACTIVE</h2>
+        <h2 class="standalone-title">🤖 AUTOMATED KNOWLEDGE ARCHIVAL ACTIVE</h2>
         <p class="standalone-description">
-          This instance is running in crawler-only mode, focused on archiving knowledge. 
-          To search and access the archived content, use the standalone version.
+          This system continuously crawls and archives important knowledge from across the web. 
+          The database grows automatically and can be downloaded at any time. 
+          The standalone reader is included with each download for offline access.
         </p>
         <div>
-          <a href="https://github.com/neooriginal/WorldEndArchive/tree/main/standalone" class="standalone-button">USE STANDALONE VERSION</a>
-          <a href="/api/download-db" id="download-db" class="standalone-button" download>DOWNLOAD DATABASE</a>
+          <a href="/api/download-db" id="download-db" class="standalone-button" download>DOWNLOAD ARCHIVE DATABASE</a>
+          <a href="/api/stats-realtime" class="standalone-button" target="_blank">VIEW DETAILED STATS</a>
         </div>
       </div>
       
@@ -60,14 +61,14 @@
             <div class="crawler-status">
               <span class="status-label">STATUS:</span>
               <span id="crawler-status-indicator" class="status-indicator status-offline"></span>
-              <span id="crawler-status-text">OFFLINE</span>
+              <span id="crawler-status-text">INITIALIZING</span>
             </div>
             <div class="stats-grid">
               <div class="stat-card">
                 <div class="stat-title">DATABASE SIZE</div>
                 <div id="db-size" class="stat-value">0 B</div>
                 <div class="stat-subtitle">
-                  <span id="db-size-percent">0%</span> of 8GB limit
+                  <span id="db-size-percent">0%</span> of 10GB limit
                 </div>
               </div>
               <div class="stat-card">
@@ -82,11 +83,11 @@
               </div>
               <div class="stat-card">
                 <div class="stat-title">ARCHIVED</div>
-                <div id="processed-urls" class="stat-va‚lue">0</div>
-                <div class="stat-subtitle">pages</div>
+                <div id="processed-urls" class="stat-value">0</div>
+                <div class="stat-subtitle">pages total</div>
               </div>
             </div>
-            <div class="crawler-details" style="display: none;">
+            <div class="crawler-details">
               <div class="detail-item">
                 <span class="detail-label">RUNTIME:</span>
                 <span id="crawler-runtime">00:00:00</span>
@@ -95,6 +96,45 @@
                 <span class="detail-label">SUCCESS RATE:</span>
                 <span id="success-rate">100%</span>
               </div>
+              <div class="detail-item">
+                <span class="detail-label">LAST UPDATED:</span>
+                <span id="last-update">Never</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- System Information Panel -->
+      <div class="terminal-panel" style="margin-top: 20px;">
+        <div class="panel-header">
+          <div class="panel-title">SYSTEM INFORMATION</div>
+          <div class="panel-controls">
+            <div class="panel-control control-close"></div>
+            <div class="panel-control control-minimize"></div>
+            <div class="panel-control control-maximize"></div>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="system-info">
+            <div class="info-section">
+              <h3>About This System</h3>
+              <p>WorldEndArchive is an automated knowledge preservation system designed to collect and archive important information from the web. It focuses on practical knowledge including science, medicine, technology, survival skills, and educational content.</p>
+            </div>
+            <div class="info-section">
+              <h3>Features</h3>
+              <ul>
+                <li>🤖 Fully automated crawling and content classification</li>
+                <li>🗄️ JSON database format for easy reading and parsing</li>
+                <li>📱 Browser-friendly chunked downloads for large archives</li>
+                <li>🔍 Built-in content filtering and topic classification</li>
+                <li>📖 Standalone offline reader included with downloads</li>
+                <li>🛡️ Respectful crawling with rate limiting and error handling</li>
+              </ul>
+            </div>
+            <div class="info-section">
+              <h3>Storage Management</h3>
+              <p>The system automatically stops crawling when reaching the 10GB storage limit to prevent system overload. Download the archive regularly to preserve your collected knowledge.</p>
             </div>
           </div>
         </div>
@@ -108,6 +148,9 @@
           <span class="status-indicator status-online"></span>
           <span>SYSTEM OPERATIONAL</span>
         </div>
+        <div class="footer-info">
+          <span>Last Update: <span id="footer-timestamp">Loading...</span></span>
+        </div>
       </div>
     </footer>
   </div>
@@ -118,6 +161,14 @@
     // Initialize application when DOM content is loaded
     document.addEventListener('DOMContentLoaded', function() {
       initApp();
+      
+      // Update footer timestamp
+      setInterval(() => {
+        const timestampElement = document.getElementById('footer-timestamp');
+        if (timestampElement) {
+          timestampElement.textContent = new Date().toLocaleString();
+        }
+      }, 1000);
     });
     
     // Update crawler stats periodically

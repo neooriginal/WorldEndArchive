@@ -162,119 +162,7 @@ function setupEventListeners() {
     elements.downloadDbButton.addEventListener('click', function(e) {
       e.preventDefault(); // Prevent default to handle manually
       
-      // Check if database exists and has size
-      if (!appState.dbStats.fileSizeBytes) {
-        alert('No database available for download.');
-        return;
-      }
-      
-      const dbSizeStr = elements.dbSize.textContent;
-      let shouldProceed = true;
-      
-      // Size warning for large downloads
-      if (appState.dbStats.fileSizeBytes > 100 * 1024 * 1024) {
-        shouldProceed = confirm(`Database size is ${dbSizeStr}. Download may take some time. Continue?`);
-      }
-      
-      if (shouldProceed) {
-        // Show downloading status
-        const originalText = elements.downloadDbButton.textContent;
-        elements.downloadDbButton.textContent = 'DOWNLOADING...';
-        elements.downloadDbButton.classList.add('downloading');
-        elements.downloadDbButton.disabled = true;
-        
-        // Create a fetch request to check headers first
-        fetch('/api/download-db', { method: 'HEAD' })
-          .then(response => {
-            // Check for crawler active warning
-            if (response.headers.get('X-Crawler-Active') === 'true') {
-              const warningAcknowledged = confirm('WARNING: Crawler is currently active. Downloading the database while crawling is in progress might result in a corrupted file. Continue anyway?');
-              if (!warningAcknowledged) {
-                throw new Error('Download canceled by user');
-              }
-            }
-            
-            // Get file size from headers
-            const contentLength = response.headers.get('Content-Length');
-            const fileSize = parseInt(contentLength);
-            
-            // Create progress bar
-            const progressBar = document.createElement('div');
-            progressBar.className = 'download-progress';
-            progressBar.innerHTML = `
-              <div class="progress-bar">
-                <div class="progress-fill"></div>
-              </div>
-              <div class="progress-text">0%</div>
-            `;
-            elements.downloadDbButton.parentNode.appendChild(progressBar);
-            
-            // Start download with progress tracking
-            return fetch('/api/download-db')
-              .then(response => {
-                const reader = response.body.getReader();
-                const contentLength = +response.headers.get('Content-Length');
-                let receivedLength = 0;
-                const chunks = [];
-                
-                return new ReadableStream({
-                  start(controller) {
-                    function push() {
-                      reader.read().then(({done, value}) => {
-                        if (done) {
-                          controller.close();
-                          return;
-                        }
-                        chunks.push(value);
-                        receivedLength += value.length;
-                        
-                        // Update progress
-                        const progress = (receivedLength / contentLength) * 100;
-                        progressBar.querySelector('.progress-fill').style.width = `${progress}%`;
-                        progressBar.querySelector('.progress-text').textContent = `${Math.round(progress)}%`;
-                        
-                        controller.enqueue(value);
-                        push();
-                      });
-                    }
-                    push();
-                  }
-                });
-              })
-              .then(stream => {
-                return new Response(stream);
-              })
-              .then(response => response.blob())
-              .then(blob => {
-                // Create download link
-                const url = URL.createObjectURL(blob);
-                const downloadLink = document.createElement('a');
-                downloadLink.href = url;
-                downloadLink.download = 'worldend_archive.json';
-                document.body.appendChild(downloadLink);
-                downloadLink.click();
-                document.body.removeChild(downloadLink);
-                URL.revokeObjectURL(url);
-                
-                // Remove progress bar after a short delay
-                setTimeout(() => {
-                  if (progressBar.parentNode) {
-                    progressBar.parentNode.removeChild(progressBar);
-                  }
-                }, 1000);
-              });
-          })
-          .catch(error => {
-            console.error('Download preparation failed:', error);
-            alert(`Download failed: ${error.message}`);
-          })
-          .finally(() => {
-            // Reset button state
-            elements.downloadDbButton.textContent = originalText;
-            elements.downloadDbButton.classList.remove('downloading');
-            elements.downloadDbButton.disabled = false;
-          });
-      }
+      initiateDownload();
     });
   }
   
@@ -304,23 +192,43 @@ function startStatsPoll() {
 }
 
 /**
- * Load crawler stats from API
+ * Load crawler stats from API using enhanced real-time endpoint
  */
 async function loadCrawlerStats() {
   try {
-    console.log('Fetching crawler stats...');
-    const response = await fetch('/api/crawler-stats');
+    console.log('Fetching real-time crawler stats...');
+    const response = await fetch('/api/stats-realtime');
     
     if (!response.ok) {
       throw new Error(`Server returned ${response.status}: ${response.statusText}`);
     }
     
     const stats = await response.json();
-    console.log('Received stats:', stats);
+    console.log('Received real-time stats:', stats);
     
-    // Update application state
-    appState.crawlerStats = stats.crawler 
-    appState.dbStats = stats.database
+    // Update application state with new structure
+    appState.crawlerStats = {
+      isRunning: stats.crawler.isRunning,
+      queueSize: stats.crawler.queueSize,
+      processedUrls: stats.crawler.processedUrls,
+      crawlSpeed: stats.crawler.crawlSpeed,
+      totalRuntime: stats.crawler.totalRuntime,
+      successRate: stats.crawler.successRate,
+      lastProcessedUrl: stats.crawler.lastProcessedUrl,
+      maxDbSize: stats.database.maxSizeBytes
+    };
+    
+    appState.dbStats = {
+      fileSize: stats.database.currentFileSize,
+      fileSizeBytes: stats.database.currentFileSizeBytes,
+      totalPages: stats.database.totalPages,
+      totalSizeRaw: stats.database.totalSizeRaw,
+      storageProgress: stats.database.storageProgress,
+      lastModified: stats.database.lastModified,
+      topTopics: stats.database.topTopics || [],
+      canDownload: stats.system.canDownload,
+      downloadRecommendation: stats.system.downloadRecommendation
+    };
     
     console.log('Updated app state:', appState);
     
@@ -340,7 +248,7 @@ async function loadCrawlerStats() {
 }
 
 /**
- * Update crawler stats UI
+ * Update crawler stats UI with enhanced information
  */
 function updateCrawlerStatsUI() {
   const stats = appState.crawlerStats;
@@ -352,16 +260,18 @@ function updateCrawlerStatsUI() {
   }
   
   if (elements.crawlerStatusText) {
-    elements.crawlerStatusText.textContent = stats.isRunning ? 'ONLINE' : 'OFFLINE';
+    const statusText = stats.isRunning ? 'CRAWLING' : 
+                      dbStats.storageProgress >= 100 ? 'STORAGE FULL' : 'STANDBY';
+    elements.crawlerStatusText.textContent = statusText;
   }
   
   // Update individual stat elements
   if (elements.queueSize) {
-    elements.queueSize.textContent = stats.queueSize;
+    elements.queueSize.textContent = stats.queueSize.toLocaleString();
   }
   
   if (elements.processedUrls) {
-    elements.processedUrls.textContent = dbStats.totalPages;
+    elements.processedUrls.textContent = dbStats.totalPages.toLocaleString();
   }
   
   if (elements.crawlSpeed) {
@@ -376,19 +286,122 @@ function updateCrawlerStatsUI() {
     elements.dbSize.textContent = dbStats.fileSize;
   }
   
-  if (elements.dbSizePercent && stats.maxDbSize > 0) {
-    const progress = (dbStats.fileSizeBytes / stats.maxDbSize) * 100;
-    elements.dbSizePercent.textContent = `${Math.min(Math.round(progress), 100)}%`;
+  if (elements.dbSizePercent) {
+    const progress = Math.min(Math.round(dbStats.storageProgress), 100);
+    elements.dbSizePercent.textContent = `${progress}%`;
+    
+    // Add visual indication for storage levels
+    const dbSizeElement = elements.dbSize.parentElement;
+    if (dbSizeElement) {
+      dbSizeElement.className = 'stat-card';
+      if (progress >= 95) {
+        dbSizeElement.className += ' storage-critical';
+      } else if (progress >= 80) {
+        dbSizeElement.className += ' storage-warning';
+      }
+    }
   }
   
   if (elements.successRate) {
     elements.successRate.textContent = `${stats.successRate}%`;
   }
   
+  // Update download button based on database state and recommendation
+  if (elements.downloadDbButton && dbStats.canDownload) {
+    updateDownloadButtonState();
+  }
+  
+  // Update last update timestamp
+  const lastUpdateElement = document.getElementById('last-update');
+  if (lastUpdateElement && dbStats.lastModified) {
+    lastUpdateElement.textContent = new Date(dbStats.lastModified).toLocaleString();
+  } else if (lastUpdateElement) {
+    lastUpdateElement.textContent = 'Never';
+  }
+  
   // Update crawler mode panel
-  updateCrawlerModePanel(stats.isRunning);
+  updateCrawlerModePanel(stats.isRunning, dbStats.storageProgress);
 }
 
+/**
+ * Update download button state based on database size and crawler status
+ */
+function updateDownloadButtonState() {
+  if (!elements.downloadDbButton) return;
+  
+  const dbStats = appState.dbStats;
+  const stats = appState.crawlerStats;
+  
+  // Change button text based on state
+  let buttonText = 'DOWNLOAD DATABASE';
+  let buttonClass = 'standalone-button';
+  
+  if (stats.isRunning) {
+    buttonText = 'DOWNLOAD (LIVE)';
+    buttonClass += ' download-live';
+  }
+  
+  if (dbStats.downloadRecommendation === 'streaming') {
+    buttonText += ' (LARGE)';
+  }
+  
+  elements.downloadDbButton.textContent = buttonText;
+  elements.downloadDbButton.className = buttonClass;
+  
+  // Add tooltip for large files
+  if (dbStats.fileSizeBytes > 100 * 1024 * 1024) {
+    elements.downloadDbButton.title = `Large file (${dbStats.fileSize}). Download may take time.`;
+  }
+}
+
+/**
+ * Enhanced download function with streaming support
+ */
+function initiateDownload() {
+  const dbStats = appState.dbStats;
+  const stats = appState.crawlerStats;
+  
+  if (!dbStats.canDownload) {
+    alert('No database available for download.');
+    return;
+  }
+  
+  // Determine download method based on size and status
+  const useStreaming = dbStats.downloadRecommendation === 'streaming' || 
+                       dbStats.fileSizeBytes > 100 * 1024 * 1024;
+  
+  const downloadUrl = useStreaming ? '/api/download-db?stream=true' : '/api/download-db';
+  
+  // Show warning for active crawler
+  if (stats.isRunning) {
+    const proceed = confirm(
+      `⚠️ CRAWLER IS ACTIVE\n\n` +
+      `The crawler is currently running and the database is being updated. ` +
+      `Downloading now may result in an incomplete snapshot.\n\n` +
+      `Current size: ${dbStats.fileSize}\n` +
+      `Last updated: ${dbStats.lastModified ? new Date(dbStats.lastModified).toLocaleString() : 'Unknown'}\n\n` +
+      `Continue with download?`
+    );
+    
+    if (!proceed) return;
+  }
+  
+  // Show size warning for large files
+  if (dbStats.fileSizeBytes > 500 * 1024 * 1024) { // > 500MB
+    const proceed = confirm(
+      `📁 LARGE FILE WARNING\n\n` +
+      `Database size: ${dbStats.fileSize}\n` +
+      `This is a large file and may take significant time to download.\n\n` +
+      `Continue?`
+    );
+    
+    if (!proceed) return;
+  }
+  
+  // Start download
+  console.log(`Starting download: ${downloadUrl}`);
+  window.location.href = downloadUrl;
+}
 
 /**
  * Format seconds to a duration string (HH:MM:SS)
@@ -561,32 +574,46 @@ function formatDate(dateString) {
 }
 
 /**
- * Update the crawler mode panel based on crawler status
+ * Update the crawler mode panel based on crawler status and storage
  * @param {boolean} isActive - Whether the crawler is currently active
+ * @param {number} storageProgress - Storage usage percentage
  */
-function updateCrawlerModePanel(isActive) {
+function updateCrawlerModePanel(isActive, storageProgress = 0) {
   if (!elements.standalonePanel || !elements.standalonePanelTitle) return;
   
-  if (isActive) {
-    elements.standalonePanel.classList.add('active');
-    elements.standalonePanelTitle.innerHTML = '⚠️ ATTENTION: CRAWLER MODE ACTIVE ⚠️';
+  let statusMessage = 'CRAWLER MODE STANDBY';
+  let panelClass = 'standalone-panel';
+  
+  if (storageProgress >= 100) {
+    statusMessage = '🚫 STORAGE LIMIT REACHED';
+    panelClass += ' storage-full';
+  } else if (isActive) {
+    statusMessage = '⚡ CRAWLER MODE ACTIVE';
+    panelClass += ' active';
+  } else if (storageProgress >= 95) {
+    statusMessage = '⚠️ STORAGE NEARLY FULL';
+    panelClass += ' storage-warning';
+  }
+  
+  elements.standalonePanel.className = panelClass;
+  elements.standalonePanelTitle.textContent = statusMessage;
+  
+  // Update description based on status
+  const descriptionElement = elements.standalonePanel.querySelector('.standalone-description');
+  if (descriptionElement) {
+    let description = '';
     
-    // Add a warning icon if not present
-    if (!document.querySelector('.crawler-mode-icon')) {
-      const warningIcon = document.createElement('div');
-      warningIcon.className = 'crawler-mode-icon';
-      warningIcon.innerHTML = `<svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>`;
-      elements.standalonePanelTitle.prepend(warningIcon);
+    if (storageProgress >= 100) {
+      description = 'The database has reached the 10GB storage limit. The crawler has stopped to prevent system issues. Download the archive to access all collected knowledge.';
+    } else if (isActive) {
+      description = 'The crawler is actively archiving knowledge from the web. The database is continuously growing. You can download a snapshot at any time.';
+    } else if (storageProgress >= 95) {
+      description = 'The database is nearly full. The crawler will stop automatically when the 10GB limit is reached.';
+    } else {
+      description = 'The crawler is in standby mode. Knowledge archiving will resume automatically when new URLs are available.';
     }
-  } else {
-    elements.standalonePanel.classList.remove('active');
-    elements.standalonePanelTitle.innerHTML = 'CRAWLER MODE STANDBY';
     
-    // Remove any existing warning icon
-    const warningIcon = document.querySelector('.crawler-mode-icon');
-    if (warningIcon) {
-      warningIcon.remove();
-    }
+    descriptionElement.textContent = description;
   }
 }
 
