@@ -61,6 +61,7 @@ insulation
 navigation
 compass
 map reading
+map
 weather
 meteorology
 psychology

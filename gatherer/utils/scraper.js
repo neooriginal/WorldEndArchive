@@ -22,14 +22,13 @@ class Scraper {
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
                 'Accept-Language': 'en-US,en;q=0.5'
             },
-            validateStatus: status => status < 500 // Resolve even if 404 to handle it gracefully
+            validateStatus: status => status < 500
         };
 
         if (proxy) {
             const proxyConfig = proxyManager.parseProxy(proxy);
             if (proxyConfig) {
                 config.proxy = proxyConfig;
-                // logger.info(`Using proxy: ${proxyConfig.host}:${proxyConfig.port}`);
             }
         }
 
@@ -38,12 +37,10 @@ class Scraper {
         const timeoutId = setTimeout(() => controller.abort(), 3000);
 
         try {
-            // logger.info(`Fetching ${url} via ${proxy || 'direct'}...`);
             const response = await axios.get(url, config);
             clearTimeout(timeoutId);
-            // logger.info(`Fetched ${url} status: ${response.status}`);
             return {
-                url: response.config.url, // Final URL after redirects
+                url: response.config.url,
                 status: response.status,
                 headers: response.headers,
                 data: response.data
@@ -86,7 +83,6 @@ class Scraper {
     }
 
     parseHtml(html, baseUrl) {
-        // Normalize baseUrl
         try {
             const urlObj = new URL(baseUrl);
             urlObj.hash = '';
@@ -96,26 +92,21 @@ class Scraper {
 
         const $ = cheerio.load(html);
 
-        // Remove scripts, styles, and other non-content elements
         $('script, style, noscript, iframe, svg, nav, footer, header, aside, .sidebar, .menu, .ad, .advertisement, .cookie-notice, .popup, .modal, .comments, .related-posts').remove();
 
-        // Extract text from specific content areas if possible, otherwise body
         let content = $('main, article, #content, .content, .post-body').first();
         if (content.length === 0) {
             content = $('body');
         }
 
         const title = $('title').text().trim();
-        // Get body text, collapsing whitespace
         const text = content.text().replace(/\s+/g, ' ').trim();
 
-        // Extract links
         const links = [];
         $('a[href]').each((i, el) => {
             const href = $(el).attr('href');
             try {
                 const urlObj = new URL(href, baseUrl);
-                // Normalize: Remove hash and query params to avoid duplicates
                 urlObj.hash = '';
                 urlObj.search = '';
 
@@ -126,14 +117,12 @@ class Scraper {
             } catch (e) { }
         });
 
-        // Extract important images
         const images = [];
         $('img[src]').each((i, el) => {
             const src = $(el).attr('src');
             const alt = $(el).attr('alt') || '';
             const titleAttr = $(el).attr('title') || '';
 
-            // Filter for "important" keywords
             const combined = `${src} ${alt} ${titleAttr}`.toLowerCase();
             const keywords = ['map', 'chart', 'diagram', 'schematic', 'guide', 'survival', 'technique', 'knot', 'plant', 'mushroom'];
 
@@ -147,13 +136,12 @@ class Scraper {
             }
         });
 
-        // Return structured data
         return {
             title,
             text,
-            links: [...new Set(links)], // Deduplicate links
-            images: [...new Set(images)], // Deduplicate
-            html: html // Keep original HTML for DB
+            links: [...new Set(links)],
+            images: [...new Set(images)],
+            html: html
         };
     }
 }

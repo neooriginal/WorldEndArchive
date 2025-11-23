@@ -69,9 +69,7 @@ class StorageManager {
     async savePage(pageData) {
         // logger.info(`Saving page: ${pageData.url}`);
 
-        // 1. Save to TXT
         try {
-            // Rotate if needed
             if (fs.existsSync(this.txtPath)) {
                 const stats = fs.statSync(this.txtPath);
                 if (stats.size >= this.maxTxtSize) {
@@ -89,7 +87,6 @@ class StorageManager {
             logger.error(`Error writing to TXT: ${e.message}`);
         }
 
-        // 2. Save to DB
         zlib.gzip(pageData.html, (err, buffer) => {
             if (err) {
                 logger.error(`Compression error: ${err.message}`);

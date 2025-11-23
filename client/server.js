@@ -56,30 +56,19 @@ app.get('/view/:id', (req, res) => {
         if (err) return res.status(500).send('Database error');
         if (!row) return res.status(404).send('Page not found');
 
-        // Decompress
         zlib.gunzip(row.content, (err, buffer) => {
             if (err) return res.status(500).send('Decompression error');
 
             const html = buffer.toString();
             const $ = cheerio.load(html);
 
-            // Ensure head exists
             if ($('head').length === 0) {
                 $('html').prepend('<head></head>');
             }
 
-            // Inject Reader CSS
             $('head').append('<link rel="stylesheet" href="/reader.css">');
-            // Inject Viewport meta for mobile
             $('head').append('<meta name="viewport" content="width=device-width, initial-scale=1.0">');
 
-            // Rewrite links to point to local viewer if possible
-            // This is tricky without knowing the IDs of other pages.
-            // For now, we'll just disable external links or leave them as is.
-            // Ideally, we'd lookup the ID for each link, but that's expensive.
-            // A better approach: Client-side click interception or a "search for this URL" link.
-
-            // Inject Header
             $('body').prepend(`
                 <div style="background: #0d1117; color: #58a6ff; padding: 10px; border-bottom: 1px solid #30363d; font-family: monospace; position: sticky; top: 0; z-index: 9999; margin-bottom: 20px;">
                     <a href="/" style="color: #58a6ff; text-decoration: none; font-weight: bold;">&larr; WorldEndArchive</a>

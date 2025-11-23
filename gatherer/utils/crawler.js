@@ -67,22 +67,15 @@ class Crawler extends EventEmitter {
     }
 
     async crawl(url) {
-        // Check robots.txt
         const allowed = await this.checkRobots(url);
         if (!allowed) {
             logger.info(`Blocked by robots.txt: ${url}`);
             return;
         }
 
-        // Domain throttling/loop prevention
         const domain = new URL(url).hostname;
         const count = this.domainCounts.get(domain) || 0;
 
-        // Dynamic probability to skip based on count
-        // If count > 5, 20% skip
-        // If count > 10, 50% skip
-        // If count > 20, 80% skip
-        // If count > 50, 95% skip
         let skipProb = 0;
         if (count > 50) skipProb = 0.95;
         else if (count > 20) skipProb = 0.8;
@@ -90,9 +83,6 @@ class Crawler extends EventEmitter {
         else if (count > 5) skipProb = 0.2;
 
         if (Math.random() < skipProb) {
-            // logger.info(`Skipping ${url} for diversity (Domain count: ${count})`);
-            // Re-queue at the end with low priority? Or just drop?
-            // Let's drop to encourage exploring other domains
             return;
         }
 
@@ -102,16 +92,12 @@ class Crawler extends EventEmitter {
 
         const result = await scraper.fetchPage(url);
         if (!result || result.status !== 200) {
-            // logger.warn(`Failed to fetch or non-200 status for ${url}`);
             return;
         }
 
-        // logger.info(`Parsing HTML for ${url}...`);
         const parsed = scraper.parseHtml(result.data, url);
-        // logger.info(`Parsed ${url}. Links: ${parsed.links.length}`);
 
-        // Emit data for storage
-        if (parsed.text.length > 100) { // Only save if substantial content
+        if (parsed.text.length > 100) {
             this.emit('document', {
                 url: result.url,
                 title: parsed.title,
@@ -120,21 +106,15 @@ class Crawler extends EventEmitter {
                 links: parsed.links
             });
 
-            // Save important images (max 2)
             if (parsed.images && parsed.images.length > 0) {
                 let savedCount = 0;
                 for (const imgUrl of parsed.images) {
                     if (savedCount >= 2) break;
 
-                    // Small delay to be polite
                     await new Promise(r => setTimeout(r, 200));
 
                     const imgData = await scraper.fetchImage(imgUrl);
                     if (imgData) {
-                        // We need to access storage manager directly or emit another event
-                        // Since 'document' event is handled by index.js which calls storage.savePage
-                        // We should probably add a method to storage or emit 'image' event
-                        // For simplicity, let's emit an 'image' event
                         this.emit('image', {
                             url: imgUrl,
                             contentType: imgData.contentType,
@@ -146,8 +126,6 @@ class Crawler extends EventEmitter {
             }
         }
 
-        // Add new links to queue
-        // Shuffle links to prevent depth-first bias on one topic
         const shuffledLinks = parsed.links.sort(() => Math.random() - 0.5);
         for (const link of shuffledLinks) {
             this.addToQueue(link);
