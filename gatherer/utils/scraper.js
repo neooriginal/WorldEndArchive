@@ -2,6 +2,7 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 const proxyManager = require('./proxy');
 const winston = require('winston');
+const sharp = require('sharp');
 
 const logger = winston.createLogger({
     level: 'info',
@@ -57,6 +58,8 @@ class Scraper {
         }
     }
 
+
+
     async fetchImage(url) {
         const proxy = proxyManager.getProxy();
         const config = {
@@ -72,12 +75,31 @@ class Scraper {
 
         try {
             const response = await axios.get(url, config);
-            return {
-                data: response.data,
-                contentType: response.headers['content-type']
-            };
+            let buffer = Buffer.from(response.data);
+
+            // Compress image
+            try {
+                buffer = await sharp(buffer)
+                    .resize(800, 800, { // Max width/height 800px, maintain aspect ratio
+                        fit: 'inside',
+                        withoutEnlargement: true
+                    })
+                    .jpeg({ quality: 60 }) // Convert to JPEG with 60% quality
+                    .toBuffer();
+
+                return {
+                    data: buffer,
+                    contentType: 'image/jpeg' // Always converting to JPEG
+                };
+            } catch (sharpError) {
+                // logger.warn(`Image compression failed for ${url}: ${sharpError.message}`);
+                // Return original if compression fails (or null if you want to be strict)
+                return {
+                    data: buffer,
+                    contentType: response.headers['content-type']
+                };
+            }
         } catch (error) {
-            // logger.warn(`Failed to fetch image ${url}: ${error.message}`);
             return null;
         }
     }
@@ -98,6 +120,10 @@ class Scraper {
             '.sidebar', '.menu', '.ad', '.advertisement', '.cookie-notice', '.popup', '.modal',
             '.comments', '.related-posts', '.social-share', '.share-buttons', '.newsletter',
             '.breadcrumbs', '.breadcrumb', '.toc', '.widget', '.search-form', 'form', 'button',
+            // Common Ad patterns
+            '[id*="google_ads"]', '[class*="google_ads"]', '.adsbygoogle',
+            '[class*="sponsored"]', '[id*="sponsored"]',
+            '.outbrain', '.taboola', '.zemanta',
             // Wikipedia specific
             '.mw-jump-link', '.mw-editsection', '.reference', '.reflist', '.portal', '.catlinks',
             '#mw-navigation', '#footer', '.mw-footer', '.printfooter', '.authority-control',
