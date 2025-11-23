@@ -2,6 +2,8 @@ const EventEmitter = require('events');
 const robotsParser = require('robots-parser');
 const scraper = require('./scraper');
 const classifier = require('./classifier');
+const LanguageDetect = require('languagedetect');
+const lngDetector = new LanguageDetect();
 const winston = require('winston');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
@@ -96,6 +98,18 @@ class Crawler extends EventEmitter {
         }
 
         const parsed = scraper.parseHtml(result.data, url);
+
+        // Language Filtering
+        if (parsed.lang && !parsed.lang.startsWith('en')) {
+            logger.info(`Skipping non-English content (lang=${parsed.lang}): ${url}`);
+            return;
+        }
+
+        const detected = lngDetector.detect(parsed.text, 1);
+        if (detected && detected.length > 0 && detected[0][0] !== 'english') {
+            logger.info(`Skipping non-English content (detected=${detected[0][0]}): ${url}`);
+            return;
+        }
 
         if (parsed.text.length > 100) {
             this.emit('document', {

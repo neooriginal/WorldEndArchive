@@ -138,6 +138,7 @@ class Scraper {
         }
 
         const title = $('title').text().trim();
+        const lang = $('html').attr('lang') || '';
         const text = content.text().replace(/\s+/g, ' ').trim();
 
         const links = [];
@@ -176,6 +177,7 @@ class Scraper {
 
         return {
             title,
+            lang,
             text,
             links: [...new Set(links)],
             images: [...new Set(images)],
