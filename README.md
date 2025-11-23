@@ -1,212 +1,117 @@
-# 🌍 WorldEndArchive
+# WorldEndArchive
 
-<p align="center">
-  <img src="./images/image.png" alt="WorldEndArchive" width="600">
-</p>
+<style>
+body {
+    font-family: 'Courier New', Courier, monospace;
+    background-color: #0d1117;
+    color: #c9d1d9;
+    line-height: 1.6;
+}
+h1, h2, h3 {
+    color: #58a6ff;
+    border-bottom: 1px solid #30363d;
+    padding-bottom: 0.3em;
+}
+a {
+    color: #58a6ff;
+    text-decoration: none;
+}
+a:hover {
+    text-decoration: underline;
+}
+code {
+    background-color: #161b22;
+    padding: 0.2em 0.4em;
+    border-radius: 3px;
+}
+.poetic-intro {
+    font-style: italic;
+    color: #8b949e;
+    border-left: 3px solid #30363d;
+    padding-left: 1em;
+    margin: 2em 0;
+}
+</style>
 
-<div align="center">
-  
-  ![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-blue)
-  ![Node](https://img.shields.io/badge/node-%3E%3D14.0.0-brightgreen)
-  ![Status](https://img.shields.io/badge/status-operational-success)
-  
-  **Preserving Humanity's Knowledge Against Digital Extinction**
-  
+<div class="poetic-intro">
+    "When the lights go out and the signals fade,<br>
+    And the silence of the void begins to wade,<br>
+    This archive stands, a beacon in the night,<br>
+    Preserving wisdom, keeping truth in sight.<br>
+    For if the world should crumble, dust to dust,<br>
+    In this digital vault, we place our trust."
 </div>
 
-<p align="center">
-  <i>In a world of fragile infrastructure and ephemeral data, what knowledge would you save?</i>
-</p>
+## Overview
 
-## 📊 Archive Network Status
+**WorldEndArchive** is a resilient, autonomous web crawler designed to preserve human knowledge in the face of catastrophe. It tirelessly traverses the web, capturing essential information and storing it in accessible formats for a post-internet world.
 
-<div align="center">
+## Setup & Usage
 
-  ![Hidden Devices](https://img.shields.io/badge/Hidden%20Devices-1-orange)
+<details>
+<summary><strong>Setup Gatherer (The Crawler)</strong></summary>
 
-  Secure flash drives containing WorldEndArchive have been hidden in various locations worldwide.
-  
-  [View all device locations](./locations.md) | [Register a new device](https://forms.gle/SJ9AUYV5p3ypvmXw8)
-  
-</div>
+The Gatherer traverses the web to collect data.
 
-## 📋 Table of Contents
+1.  **Navigate to directory**:
+    ```bash
+    cd gatherer
+    ```
 
-- [Overview](#-overview)
-- [Features](#-features)
-- [System Architecture](#-system-architecture)
-- [Installation](#-installation)
-- [Usage](#-usage)
-- [Configuration](#-configuration)
-- [Content Filtering](#-content-filtering)
-- [Contributing](#-contributing)
-- [Emergency Usage](#-emergency-usage)
-- [License](#-license)
+2.  **Install dependencies**:
+    ```bash
+    npm install
+    ```
 
-## 🔍 Overview
+3.  **Configure**:
+    -   Copy `.env.example` to `.env`.
+    -   Edit `.env` to set your proxies, concurrency, etc.
 
-WorldEndArchive is a digital Noah's Ark for human knowledge. As our increasingly complex digital infrastructure grows more vulnerable to disruption, this system ensures critical information survives catastrophic events by systematically crawling, compressing, and preserving important web content in a self-contained, offline-accessible archive.
+4.  **Start Crawling**:
+    ```bash
+    npm start
+    ```
+    -   **Dashboard**: [http://localhost:3000](http://localhost:3000)
+    -   **Output**: Data is saved to `gatherer/output/`.
 
-The internet contains humanity's accumulated wisdom, but its accessibility depends on complex systems vulnerable to numerous threats - from solar flares to cyberattacks, from infrastructure decay to social collapse. WorldEndArchive transforms the ephemeral web into permanent, accessible knowledge that can survive these threats.
+</details>
 
-## ✨ Features
+<details>
+<summary><strong>Setup Client (The Reader)</strong></summary>
 
-- **📡 Autonomous Web Crawler**: Recursively crawls websites, following links to archive entire knowledge bases
-- **⚙️ Automatic Operation**: Starts crawling automatically when the application runs
-- **💾 Size Management**: Automatically stops when database reaches 8GB to prevent excessive storage use
-- **🧠 Topic Classification**: Categorizes content by topics using keyword analysis
-- **🔍 Content Filtering**: Only archives content that matches defined knowledge categories
-- **📦 High-Ratio Compression**: Uses LZMA compression to minimize storage requirements
-- **🔎 Full-Text Search**: Search archived content by keywords or topics
-- **🖥️ Post-Apocalyptic UI**: Terminal-inspired interface with CRT effects and nuclear aesthetics
-- **🔌 Offline Operation**: Works entirely offline once content is archived
-- **🗄️ Persistent Storage**: JSON file for reliable, portable storage
+The Client allows you to browse the archived content offline.
 
-## 🏗️ System Architecture
+1.  **Navigate to directory**:
+    ```bash
+    cd client
+    ```
 
-WorldEndArchive uses a two-component architecture:
+2.  **Install dependencies**:
+    ```bash
+    npm install
+    ```
 
-1. **Crawler Component** (`Main Application`)
-   - Handles web crawling and content archiving
-   - Builds and maintains the JSON database
-   - Provides database download functionality
-   - Runs as a Node.js application
+3.  **Start Reader**:
+    ```bash
+    npm start
+    ```
+    -   **Interface**: [http://localhost:3001](http://localhost:3001)
 
-2. **Reader Component** (`Standalone Application`)
-   - Provides search and retrieval functionality
-   - Works completely offline
-   - Can be used with any web pc using python
-   - Located in the `/standalone` folder
+</details>
 
-This separation ensures that the knowledge archiving process can run on a powerful server, while the knowledge retrieval can be performed on any device with python, even in offline scenarios.
+## Configuration
 
-## 🚀 Installation
+Edit `gatherer/.env` to customize:
+*   `MAX_CONCURRENCY`: Number of simultaneous requests.
+*   `DELAY_BETWEEN_REQUESTS_MS`: Throttle speed.
+*   `USE_PROXIES`: Enable/disable proxy rotation.
+*   `KEYWORDS_FILE`: Path to your custom keywords.
 
-### Prerequisites
 
-- Node.js 14.x or higher
-- npm or yarn
+## Contributing
 
-### Setup
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/neooriginal/WorldEndArchive.git
-   cd WorldEndArchive
-   ```
-
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-3. Set up environment variables:
-   ```bash
-   cp .env.example .env
-   ```
-   Edit the `.env` file to adjust crawling parameters as needed.
-
-> **Note:** As of the latest version, WorldEndArchive now uses a JSON file for storage instead of SQLite. This makes the application more portable and eliminates the need for binary dependencies.
-
-## 🔨 Usage
-
-### Running the Crawler
-
-To start the web crawler and build your knowledge archive:
-
-```bash
-npm start
-```
-
-This will:
-1. Start the server on port 3000 (or the port specified in your .env file)
-2. Begin automatically crawling the web using recommended seed sites
-3. Continue crawling until the database reaches 8GB in size
-4. Serve the standalone app at http://localhost:3000 for browsing the archive
-
-### Manual crawling (optional)
-
-If you want to manually specify which websites to crawl:
-
-```bash
-npm run crawl-only https://example.com https://anothersite.org
-```
-
-This will override the automatic crawling process.
-
-### Accessing Your Archive
-
-Once the crawler has collected knowledge:
-
-1. **Web Interface**: Visit `http://localhost:3000` to access the standalone reader in your browser
-2. **Download Database**: Use the download button to save the database file
-3. **Offline Access**: Copy the `/standalone` folder and your database file to any storage device
-
-## ⚙️ Configuration
-
-Key configuration options in `.env`:
-
-| Option | Description |
-|--------|-------------|
-| `MAX_DEPTH` | How deep to follow links (higher values mean more pages) |
-| `CONCURRENT_REQUESTS` | Number of parallel requests to make |
-| `ALLOWED_DOMAINS` | Restrict crawling to specific domains (comma-separated) |
-| `EXCLUDED_DOMAINS` | Domains to exclude from crawling |
-| `MAX_DB_SIZE_MB` | Maximum database size in MB (default: 8192) |
-
-## 🧩 Content Filtering
-
-WorldEndArchive prioritizes knowledge critical for rebuilding civilization:
-
-1. Classifying content into defined knowledge categories:
-   - Survival & Emergency Preparedness
-   - Medicine & Healthcare
-   - Technology & Computing
-   - Science & Research
-   - Agriculture & Food Production
-   - Engineering & Construction
-   - Mathematics & Logic
-   - History & Civilization
-   - Philosophy & Ethics
-
-2. Prioritizing content based on weighted topic importance:
-   - High priority: Medicine, Science, Survival, Engineering
-   - Medium priority: Mathematics, Computing, Agriculture
-   - Lower priority: Entertainment
-
-3. Skipping content that is too short or lacks educational value
-
-## 👥 Contributing
-
-Contributions are welcome! This project represents a collective effort to preserve human knowledge. Please feel free to submit a Pull Request to improve our digital ark.
-
-## 🚨 Emergency Usage
-
-In case of severe infrastructure disruption or societal instability:
-
-1. Use battery, solar, or generator power to run a computer
-2. Access the standalone version in the `/standalone` folder directly 
-3. If you have multiple storage locations, use the database file with the most recent date
-4. Share your knowledge database with trusted communities to strengthen collective resilience
-
-Remember: Information that seems mundane today may be irreplaceable tomorrow.
-
-## 📄 License
-
-This project is licensed under the [Creative Commons Attribution-NonCommercial 4.0 International License (CC BY-NC 4.0)](http://creativecommons.org/licenses/by-nc/4.0/).
-
-This means:
-- ✅ You can share, copy, and redistribute the material
-- ✅ You can adapt, remix, transform, and build upon the material
-- ⛔ You cannot use the material for commercial purposes
-- ⚠️ You must give appropriate credit and indicate if changes were made
-
-The license includes a special provision that, in the event of global crisis or civilization collapse, all copyright restrictions are suspended, making the knowledge freely available to all of humanity.
-
-See the [LICENSE](./LICENSE) file for details.
+If you are reading this, the internet is likely still operational. Feel free to contribute to the codebase to ensure it is ready for when it is not.
 
 ---
 
-<p align="center">
-  <i>"The greatest glory of a building is not in its stones, nor in its gold. Its glory is in its endurance." - John Ruskin</i>
-</p>
+*Preserving the past, for the future.*

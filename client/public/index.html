@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WorldEndArchive Reader</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>WorldEndArchive</h1>
+            <p class="subtitle">Preserving knowledge for the future.</p>
+        </header>
+
+        <div class="search-box">
+            <input type="text" id="search-input" placeholder="Search the archive...">
+        </div>
+
+        <main>
+            <section id="results-section" class="hidden">
+                <h2>Search Results</h2>
+                <ul id="results-list" class="link-list"></ul>
+            </section>
+
+            <section id="recent-section">
+                <h2>Recently Archived</h2>
+                <ul id="recent-list" class="link-list"></ul>
+            </section>
+        </main>
+
+        <footer>
+            <p>&copy; WorldEndArchive. Stay safe.</p>
+        </footer>
+    </div>
+
+    <script>
+        const searchInput = document.getElementById('search-input');
+        const resultsSection = document.getElementById('results-section');
+        const resultsList = document.getElementById('results-list');
+        const recentList = document.getElementById('recent-list');
+
+        // Load recent
+        fetch('/api/recent')
+            .then(res => res.json())
+            .then(data => renderList(recentList, data));
+
+        // Search
+        let debounceTimer;
+        searchInput.addEventListener('input', (e) => {
+            clearTimeout(debounceTimer);
+            const query = e.target.value.trim();
+
+            if (query.length === 0) {
+                resultsSection.classList.add('hidden');
+                return;
+            }
+
+            debounceTimer = setTimeout(() => {
+                fetch(`/api/search?q=${encodeURIComponent(query)}`)
+                    .then(res => res.json())
+                    .then(data => {
+                        renderList(resultsList, data);
+                        resultsSection.classList.remove('hidden');
+                    });
+            }, 300);
+        });
+
+        function renderList(element, items) {
+            element.innerHTML = '';
+            if (items.length === 0) {
+                element.innerHTML = '<li>No results found.</li>';
+                return;
+            }
+
+            items.forEach(item => {
+                const li = document.createElement('li');
+                const date = new Date(item.timestamp).toLocaleString();
+                li.innerHTML = `
+                    <a href="/view/${item.id}" class="archive-link">
+                        <span class="title">${item.title || 'Untitled'}</span>
+                        <span class="url">${item.url}</span>
+                        <span class="date">${date}</span>
+                    </a>
+                `;
+                element.appendChild(li);
+            });
+        }
+    </script>
+</body>
+
+</html>

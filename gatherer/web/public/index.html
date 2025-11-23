@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WorldEndArchive Dashboard</title>
+    <link rel="stylesheet" href="main.css">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>WorldEndArchive</h1>
+            <p class="status">System Status: <span id="status-indicator" class="online">ONLINE</span></p>
+        </header>
+
+        <main>
+            <section class="stats-grid">
+                <div class="stat-card">
+                    <h3>Pages Archived</h3>
+                    <p id="pages-count">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Queue Length</h3>
+                    <p id="queue-length">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>TXT Size</h3>
+                    <p id="txt-size">0 MB</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Uptime</h3>
+                    <p id="uptime">0s</p>
+                </div>
+            </section>
+
+            <section class="controls">
+                <div class="control-group">
+                    <h2>Manual Override</h2>
+                    <div class="input-group">
+                        <input type="url" id="url-input" placeholder="Enter URL to prioritize...">
+                        <button id="add-btn">Inject URL</button>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <h2>Data Extraction</h2>
+                    <div class="button-group">
+                        <a href="/download/txt" class="btn download">Download TXT Archive</a>
+                        <a href="/download/db" class="btn download">Download SQLite DB</a>
+                    </div>
+                </div>
+            </section>
+
+            <section class="logs">
+                <h2>Live Logs</h2>
+                <div id="log-container">
+                    <div class="log-entry">System initialized...</div>
+                </div>
+            </section>
+        </main>
+    </div>
+    <script src="app.js"></script>
+</body>
+
+</html>
