@@ -92,9 +92,21 @@ class Scraper {
 
         const $ = cheerio.load(html);
 
-        $('script, style, noscript, iframe, svg, nav, footer, header, aside, .sidebar, .menu, .ad, .advertisement, .cookie-notice, .popup, .modal, .comments, .related-posts').remove();
+        // Aggressive cleanup of non-content elements
+        const noiseSelectors = [
+            'script', 'style', 'noscript', 'iframe', 'svg', 'nav', 'footer', 'header', 'aside',
+            '.sidebar', '.menu', '.ad', '.advertisement', '.cookie-notice', '.popup', '.modal',
+            '.comments', '.related-posts', '.social-share', '.share-buttons', '.newsletter',
+            '.breadcrumbs', '.breadcrumb', '.toc', '.widget', '.search-form', 'form', 'button',
+            // Wikipedia specific
+            '.mw-jump-link', '.mw-editsection', '.reference', '.reflist', '.portal', '.catlinks',
+            '#mw-navigation', '#footer', '.mw-footer', '.printfooter', '.authority-control',
+            '.mw-cite-backlink', '#siteNotice', '.mw-indicators'
+        ];
 
-        let content = $('main, article, #content, .content, .post-body').first();
+        $(noiseSelectors.join(', ')).remove();
+
+        let content = $('main, article, #content, .content, .post-body, #mw-content-text').first();
         if (content.length === 0) {
             content = $('body');
         }
