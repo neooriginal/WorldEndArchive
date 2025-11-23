@@ -62,6 +62,17 @@ app.get('/view/:id', (req, res) => {
             const html = buffer.toString();
             const $ = cheerio.load(html);
 
+            // Security: Remove all scripts and event handlers
+            $('script').remove();
+            $('*').each((i, el) => {
+                const attribs = el.attribs;
+                for (const name in attribs) {
+                    if (name.startsWith('on')) {
+                        $(el).removeAttr(name);
+                    }
+                }
+            });
+
             if ($('head').length === 0) {
                 $('html').prepend('<head></head>');
             }
