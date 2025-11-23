@@ -1,46 +1,15 @@
 # WorldEndArchive
 
-<style>
-body {
-    font-family: 'Courier New', Courier, monospace;
-    background-color: #0d1117;
-    color: #c9d1d9;
-    line-height: 1.6;
-}
-h1, h2, h3 {
-    color: #58a6ff;
-    border-bottom: 1px solid #30363d;
-    padding-bottom: 0.3em;
-}
-a {
-    color: #58a6ff;
-    text-decoration: none;
-}
-a:hover {
-    text-decoration: underline;
-}
-code {
-    background-color: #161b22;
-    padding: 0.2em 0.4em;
-    border-radius: 3px;
-}
-.poetic-intro {
-    font-style: italic;
-    color: #8b949e;
-    border-left: 3px solid #30363d;
-    padding-left: 1em;
-    margin: 2em 0;
-}
-</style>
-
-<div class="poetic-intro">
+<p align="center">
+  <em>
     "When the lights go out and the signals fade,<br>
     And the silence of the void begins to wade,<br>
     This archive stands, a beacon in the night,<br>
     Preserving wisdom, keeping truth in sight.<br>
     For if the world should crumble, dust to dust,<br>
     In this digital vault, we place our trust."
-</div>
+  </em>
+</p>
 
 ## Overview
 
