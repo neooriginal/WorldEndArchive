@@ -86,6 +86,14 @@ class Scraper {
     }
 
     parseHtml(html, baseUrl) {
+        // Normalize baseUrl
+        try {
+            const urlObj = new URL(baseUrl);
+            urlObj.hash = '';
+            urlObj.search = '';
+            baseUrl = urlObj.href;
+        } catch (e) { }
+
         const $ = cheerio.load(html);
 
         // Remove scripts, styles, and other non-content elements
@@ -106,8 +114,12 @@ class Scraper {
         $('a[href]').each((i, el) => {
             const href = $(el).attr('href');
             try {
-                const absoluteUrl = new URL(href, baseUrl).href;
-                // Only keep http/https links
+                const urlObj = new URL(href, baseUrl);
+                // Normalize: Remove hash and query params to avoid duplicates
+                urlObj.hash = '';
+                urlObj.search = '';
+
+                const absoluteUrl = urlObj.href;
                 if (absoluteUrl.startsWith('http')) {
                     links.push(absoluteUrl);
                 }
