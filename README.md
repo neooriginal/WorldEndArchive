@@ -15,6 +15,11 @@
 
 **WorldEndArchive** is a resilient, autonomous web crawler designed to preserve human knowledge in the face of catastrophe. It tirelessly traverses the web, capturing essential information and storing it in accessible formats for a post-internet world.
 
+<img width="1275" height="669" alt="crawler" src="https://github.com/user-attachments/assets/34f54910-b87a-42e6-96ae-67dfb49fabb8" />
+
+<img width="1275" height="669" alt="client" src="https://github.com/user-attachments/assets/441732d7-9241-45a7-bf3c-b11c88d4e6e2" />
+
+
 ## Setup & Usage
 
 <details>
