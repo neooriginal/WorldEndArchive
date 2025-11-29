@@ -43,14 +43,34 @@ router.post('/add-url', express.json(), (req, res) => {
     }
 });
 
+
 // Download endpoints
 router.get('/download/txt', (req, res) => {
-    const file = storage.txtPath;
-    if (fs.existsSync(file)) {
-        res.download(file, 'archive.txt');
-    } else {
-        res.status(404).send('Archive file not found yet.');
+    const archiver = require('archiver');
+    const outputDir = storage.outputDir;
+
+    // Find all TXT archive files
+    const files = fs.readdirSync(outputDir).filter(f =>
+        f === 'archive.txt' || f.startsWith('archive_') && f.endsWith('.txt')
+    );
+
+    if (files.length === 0) {
+        return res.status(404).send('No archive files found yet.');
     }
+
+    // Create ZIP archive
+    const archive = archiver('zip', { zlib: { level: 9 } });
+
+    res.attachment('worldendarchive_txt.zip');
+    archive.pipe(res);
+
+    // Add all TXT files to the ZIP
+    files.forEach(file => {
+        const filePath = path.join(outputDir, file);
+        archive.file(filePath, { name: file });
+    });
+
+    archive.finalize();
 });
 
 router.get('/download/db', (req, res) => {
