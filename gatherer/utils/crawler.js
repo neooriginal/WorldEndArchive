@@ -51,6 +51,32 @@ class Crawler extends EventEmitter {
             return;
         }
 
+        // Queue size limit to prevent unbounded growth
+        const currentQueueSize = this.queue.size + (this.priorityQueue ? this.priorityQueue.length : 0);
+        const maxQueueSize = parseInt(process.env.MAX_QUEUE_SIZE) || 1000;
+
+        if (!priority && currentQueueSize >= maxQueueSize) {
+            // When queue is full, be very aggressive about filtering
+            // Only add URLs with 5% probability, and only if from a new domain
+            if (Math.random() > 0.05) {
+                this.visited.add(url);
+                return;
+            }
+
+            try {
+                const domain = new URL(url).hostname;
+                const domainCount = this.domainCounts.get(domain) || 0;
+                if (domainCount > 0) {
+                    // Already seen this domain, skip it
+                    this.visited.add(url);
+                    return;
+                }
+            } catch (e) {
+                this.visited.add(url);
+                return;
+            }
+        }
+
         if (priority) {
             // Use a separate array for priority URLs (processed first in processQueue)
             this.priorityQueue.push(url);
