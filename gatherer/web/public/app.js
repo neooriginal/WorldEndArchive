@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 pagesCount.textContent = data.storage.count;
                 queueLength.textContent = data.crawler.queueLength;
                 txtSize.textContent = (data.storage.txtSize / (1024 * 1024)).toFixed(2) + ' MB';
+                document.getElementById('db-size').textContent = (data.storage.dbSize / (1024 * 1024)).toFixed(2) + ' MB';
                 uptime.textContent = Math.floor(data.uptime) + 's';
             })
             .catch(err => console.error('Error fetching stats:', err));

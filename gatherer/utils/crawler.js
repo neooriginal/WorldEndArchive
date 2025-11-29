@@ -17,10 +17,13 @@ const logger = winston.createLogger({
     transports: [new winston.transports.Console()]
 });
 
+const Queue = require('./queue');
+
 class Crawler extends EventEmitter {
     constructor() {
         super();
-        this.queue = []; // Priority queue could be better, but array for simplicity
+        this.queue = new Queue();
+        this.priorityQueue = [];
         this.visited = new Set();
         this.activeRequests = 0;
         this.maxConcurrency = parseInt(process.env.MAX_CONCURRENCY) || 5;
@@ -38,10 +41,17 @@ class Crawler extends EventEmitter {
             return;
         }
 
+        // Pre-process URLs to filter out low-quality ones
+        if (classifier.isLowQualityUrl(url)) {
+            this.visited.add(url);
+            return;
+        }
+
         if (priority) {
-            this.queue.unshift(url);
+            // Use a separate array for priority URLs (processed first in processQueue)
+            this.priorityQueue.push(url);
         } else {
-            this.queue.push(url);
+            this.queue.enqueue(url);
         }
 
         this.visited.add(url);
@@ -51,9 +61,17 @@ class Crawler extends EventEmitter {
     async processQueue() {
         if (!this.isRunning) return;
         if (this.activeRequests >= this.maxConcurrency) return;
-        if (this.queue.length === 0) return;
 
-        const url = this.queue.shift();
+        // Check priority queue first
+        let url;
+        if (this.priorityQueue && this.priorityQueue.length > 0) {
+            url = this.priorityQueue.shift();
+        } else if (this.queue.size > 0) {
+            url = this.queue.dequeue();
+        } else {
+            return;
+        }
+
         this.activeRequests++;
 
         try {
@@ -148,6 +166,12 @@ class Crawler extends EventEmitter {
                     // If no robots.txt, assume allowed
                     this.robotsCache.set(origin, null);
                 }
+
+                // Limit cache size
+                if (this.robotsCache.size > 500) {
+                    const firstKey = this.robotsCache.keys().next().value;
+                    this.robotsCache.delete(firstKey);
+                }
             }
 
             const parser = this.robotsCache.get(origin);
@@ -174,7 +198,7 @@ class Crawler extends EventEmitter {
 
     getStats() {
         return {
-            queueLength: this.queue.length,
+            queueLength: this.queue.size + (this.priorityQueue ? this.priorityQueue.length : 0),
             visitedCount: this.visited.size,
             activeRequests: this.activeRequests
         };

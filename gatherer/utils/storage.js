@@ -126,9 +126,18 @@ class StorageManager {
                     }
                 } catch (e) { }
 
+                // Get DB size
+                let dbSize = 0;
+                try {
+                    if (fs.existsSync(this.dbPath)) {
+                        dbSize = fs.statSync(this.dbPath).size;
+                    }
+                } catch (e) { }
+
                 callback({
                     count: row.count,
-                    txtSize: txtSize
+                    txtSize: txtSize,
+                    dbSize: dbSize
                 });
             }
         });

@@ -53,13 +53,57 @@ class Classifier {
         }
     }
 
-    isDuplicate(newText, existingTexts) {
-        // existingTexts should be an array of strings to compare against.
-        // CAUTION: Comparing against ALL existing texts is O(N) and slow.
-        // For a large archive, we need a better approach (e.g., SimHash or MinHash).
-        // Given the requirements and "minimal RAM", keeping all text in memory is bad.
-        // We might need to rely on a rolling window or just check against the last N entries.
+    isLowQualityUrl(url) {
+        try {
+            const urlObj = new URL(url);
+            const pathname = urlObj.pathname.toLowerCase();
+            const search = urlObj.search.toLowerCase();
 
+            // Tracking pixels and analytics
+            if (pathname.includes('/pixel') || pathname.includes('/track') || pathname.includes('/beacon')) {
+                return true;
+            }
+
+            // Social sharing and action URLs
+            if (pathname.includes('/share') || pathname.includes('/print') ||
+                pathname.includes('/email') || pathname.includes('/download.pdf')) {
+                return true;
+            }
+
+            // Login/logout/register pages
+            if (pathname.match(/\/(login|logout|signin|signout|register|signup|auth)/)) {
+                return true;
+            }
+
+            // Deep pagination (>10 pages)
+            const pageMatch = pathname.match(/\/page\/(\d+)/) || search.match(/[?&]page=(\d+)/);
+            if (pageMatch && parseInt(pageMatch[1]) > 10) {
+                return true;
+            }
+
+            // Very long URLs
+            if (url.length > 500) {
+                return true;
+            }
+
+            // Too many query parameters
+            const paramCount = (search.match(/&/g) || []).length + (search.includes('?') ? 1 : 0);
+            if (paramCount > 8) {
+                return true;
+            }
+
+            // Non-HTML file types
+            if (pathname.match(/\.(xml|json|rss|atom|ics|vcf|zip|tar|gz|exe|dmg|pkg)$/)) {
+                return true;
+            }
+
+            return false;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    isDuplicate(newText, existingTexts) {
         if (!existingTexts || existingTexts.length === 0) return false;
 
         const threshold = parseFloat(process.env.SIMILARITY_THRESHOLD) || 0.8;
