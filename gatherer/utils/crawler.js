@@ -32,9 +32,13 @@ class Crawler extends EventEmitter {
         this.delay = parseInt(process.env.DELAY_BETWEEN_REQUESTS_MS) || 1000;
         this.robotsCache = new Map(); // Domain -> RobotsParser instance
         this.isRunning = false;
-        this.isRunning = false;
         this.domainCounts = new Map(); // Domain -> count to prevent loops
         this.acceptedLanguages = (process.env.ACCEPTED_LANGUAGES || 'en').split(',').map(l => l.trim().toLowerCase());
+        this.targetQueueSize = parseInt(process.env.TARGET_QUEUE_SIZE) || 1000;
+        this.maxQueueSize = parseInt(process.env.MAX_QUEUE_SIZE) || 50000;
+
+        // Start periodic queue trimming
+        this.queueTrimInterval = setInterval(() => this.trimQueue(), 10000);
     }
 
     addToQueue(url, priority = false) {
@@ -51,29 +55,26 @@ class Crawler extends EventEmitter {
             return;
         }
 
-        // Queue size limit to prevent unbounded growth
+        // Progressive queue management for variety while preventing RAM bloat
         const currentQueueSize = this.queue.size + (this.priorityQueue ? this.priorityQueue.length : 0);
-        const maxQueueSize = parseInt(process.env.MAX_QUEUE_SIZE) || 1000;
 
-        if (!priority && currentQueueSize >= maxQueueSize) {
-            // When queue is full, be very aggressive about filtering
-            // Only add URLs with 5% probability, and only if from a new domain
-            if (Math.random() > 0.05) {
+        if (!priority) {
+            // Hard max - reject everything
+            if (currentQueueSize >= this.maxQueueSize) {
                 this.visited.add(url);
                 return;
             }
 
-            try {
-                const domain = new URL(url).hostname;
-                const domainCount = this.domainCounts.get(domain) || 0;
-                if (domainCount > 0) {
-                    // Already seen this domain, skip it
+            // Progressive filtering between target and max
+            if (currentQueueSize > this.targetQueueSize) {
+                const overTarget = currentQueueSize - this.targetQueueSize;
+                const rangeSize = this.maxQueueSize - this.targetQueueSize;
+                const dropRate = Math.min(0.95, (overTarget / rangeSize) * 0.95);
+
+                if (Math.random() < dropRate) {
                     this.visited.add(url);
                     return;
                 }
-            } catch (e) {
-                this.visited.add(url);
-                return;
             }
         }
 
@@ -253,6 +254,20 @@ class Crawler extends EventEmitter {
         }
     }
 
+    trimQueue() {
+        const currentSize = this.queue.size + (this.priorityQueue ? this.priorityQueue.length : 0);
+        if (currentSize > this.maxQueueSize) {
+            const toRemove = currentSize - this.targetQueueSize;
+            logger.info(`Queue oversized (${currentSize}), trimming ${toRemove} items to target...`);
+
+            for (let i = 0; i < toRemove && this.queue.size > 0; i++) {
+                this.queue.dequeue();
+            }
+
+            logger.info(`Queue trimmed to ${this.queue.size + (this.priorityQueue ? this.priorityQueue.length : 0)}`);
+        }
+    }
+
     start() {
         this.isRunning = true;
         this.processQueue();
@@ -261,6 +276,9 @@ class Crawler extends EventEmitter {
 
     stop() {
         this.isRunning = false;
+        if (this.queueTrimInterval) {
+            clearInterval(this.queueTrimInterval);
+        }
         logger.info('Crawler stopped.');
     }
 
