@@ -27,9 +27,44 @@ class Crawler extends EventEmitter {
         this.acceptedLanguages = (process.env.ACCEPTED_LANGUAGES || 'en').split(',').map(l => l.trim().toLowerCase());
         this.targetQueueSize = parseInt(process.env.TARGET_QUEUE_SIZE) || 1000;
         this.maxQueueSize = parseInt(process.env.MAX_QUEUE_SIZE) || 50000;
+        this.maxVisitedSize = parseInt(process.env.MAX_VISITED_SIZE) || 100000; // Limit visited Set
+        this.maxDomainCounts = parseInt(process.env.MAX_DOMAIN_COUNTS) || 1000; // Limit domain tracking
 
         // Start periodic queue trimming
         this.queueTrimInterval = setInterval(() => this.trimQueue(), 10000);
+
+        // Start periodic memory cleanup
+        this.memoryCleanupInterval = setInterval(() => this.cleanupMemory(), 60000);
+    }
+
+    cleanupMemory() {
+        // Limit visited Set size to prevent unbounded growth
+        if (this.visited.size > this.maxVisitedSize) {
+            const toRemove = this.visited.size - this.maxVisitedSize;
+            logger.info(`Visited set too large (${this.visited.size}), removing ${toRemove} old entries`);
+
+            // Remove oldest entries (approximate LRU by removing first entries)
+            const iterator = this.visited.values();
+            for (let i = 0; i < toRemove; i++) {
+                this.visited.delete(iterator.next().value);
+            }
+        }
+
+        // Limit domain counts
+        if (this.domainCounts.size > this.maxDomainCounts) {
+            const toRemove = this.domainCounts.size - this.maxDomainCounts;
+            logger.info(`Domain counts too large (${this.domainCounts.size}), removing ${toRemove} entries`);
+
+            const iterator = this.domainCounts.keys();
+            for (let i = 0; i < toRemove; i++) {
+                this.domainCounts.delete(iterator.next().value);
+            }
+        }
+
+        // Suggest garbage collection (Node.js will decide)
+        if (global.gc) {
+            global.gc();
+        }
     }
 
     addToQueue(url, priority = false) {
@@ -269,6 +304,9 @@ class Crawler extends EventEmitter {
         this.isRunning = false;
         if (this.queueTrimInterval) {
             clearInterval(this.queueTrimInterval);
+        }
+        if (this.memoryCleanupInterval) {
+            clearInterval(this.memoryCleanupInterval);
         }
         logger.info('Crawler stopped.');
     }
