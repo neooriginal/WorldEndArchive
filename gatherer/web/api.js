@@ -2,14 +2,27 @@ const express = require('express');
 const path = require('path');
 const crawler = require('../utils/crawler');
 const storage = require('../utils/storage');
-const winston = require('winston');
 require('dotenv').config({ path: path.join(__dirname, '../../.env') });
 
+const { logger, logStream } = require('../utils/logger');
+
 const router = express.Router();
-const logger = winston.createLogger({
-    level: 'info',
-    format: winston.format.simple(),
-    transports: [new winston.transports.Console()]
+
+// SSE Endpoint for logs
+router.get('/logs/stream', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    const onLog = (data) => {
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    logStream.on('log', onLog);
+
+    req.on('close', () => {
+        logStream.off('log', onLog);
+    });
 });
 
 // Serve static files
@@ -98,5 +111,5 @@ function startServer() {
     });
 }
 
-module.exports = { startServer, app };
+module.exports = { startServer, app, logger };
 const fs = require('fs'); // Added missing require

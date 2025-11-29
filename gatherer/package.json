@@ -18,7 +18,8 @@
     "sharp": "^0.34.5",
     "sqlite3": "^5.1.6",
     "string-similarity": "^4.0.4",
-    "winston": "^3.11.0"
+    "winston": "^3.11.0",
+    "winston-transport": "^4.9.0"
   },
   "repository": {
     "type": "git",

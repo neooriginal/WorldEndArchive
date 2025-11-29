@@ -20,15 +20,33 @@ document.addEventListener('DOMContentLoaded', () => {
             .catch(err => console.error('Error fetching stats:', err));
     }
 
-    function addLog(message) {
+    function addLog(message, level = 'info') {
         const entry = document.createElement('div');
-        entry.className = 'log-entry';
-        entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+        entry.className = `log-entry log-${level}`;
+        const time = new Date().toLocaleTimeString();
+        entry.innerHTML = `<span class="log-time">[${time}]</span> <span class="log-msg">${message}</span>`;
         logContainer.prepend(entry);
+
+        // Keep only last 50 logs to prevent DOM bloat
         if (logContainer.children.length > 50) {
             logContainer.lastChild.remove();
         }
     }
+
+    // Connect to SSE Log Stream
+    const logSource = new EventSource('/logs/stream');
+    logSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        addLog(data.message, data.level);
+    };
+
+    logSource.onerror = () => {
+        console.log('SSE connection lost, retrying...');
+        logSource.close();
+        setTimeout(() => {
+            new EventSource('/logs/stream'); // Simple retry
+        }, 5000);
+    };
 
     addBtn.addEventListener('click', () => {
         const url = urlInput.value;

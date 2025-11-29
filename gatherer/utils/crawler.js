@@ -8,16 +8,7 @@ const winston = require('winston');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
-const logger = winston.createLogger({
-    level: 'info',
-    format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.printf(({ timestamp, level, message }) => {
-            return `${timestamp} [${level.toUpperCase()}]: ${message}`;
-        })
-    ),
-    transports: [new winston.transports.Console()]
-});
+const { logger } = require('./logger');
 
 const Queue = require('./queue');
 
