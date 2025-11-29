@@ -2,6 +2,8 @@ const EventEmitter = require('events');
 const robotsParser = require('robots-parser');
 const scraper = require('./scraper');
 const classifier = require('./classifier');
+const LanguageDetect = require('languagedetect');
+const lngDetector = new LanguageDetect();
 const winston = require('winston');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
@@ -30,7 +32,9 @@ class Crawler extends EventEmitter {
         this.delay = parseInt(process.env.DELAY_BETWEEN_REQUESTS_MS) || 1000;
         this.robotsCache = new Map(); // Domain -> RobotsParser instance
         this.isRunning = false;
+        this.isRunning = false;
         this.domainCounts = new Map(); // Domain -> count to prevent loops
+        this.acceptedLanguages = (process.env.ACCEPTED_LANGUAGES || 'en').split(',').map(l => l.trim().toLowerCase());
     }
 
     addToQueue(url, priority = false) {
@@ -114,6 +118,44 @@ class Crawler extends EventEmitter {
         }
 
         const parsed = scraper.parseHtml(result.data, url);
+
+        // Language Filtering
+        const acceptedLangs = this.acceptedLanguages;
+
+        if (parsed.lang) {
+            const langCode = parsed.lang.split('-')[0].toLowerCase();
+            if (!acceptedLangs.some(l => langCode === l || (l === 'en' && langCode === 'en'))) {
+                if (!acceptedLangs.includes(langCode)) {
+                    logger.info(`Skipping content (lang=${parsed.lang}): ${url}`);
+                    return;
+                }
+            }
+        }
+
+        const detected = lngDetector.detect(parsed.text, 1);
+        if (detected && detected.length > 0) {
+            const detectedName = detected[0][0].toLowerCase();
+
+            const nameToCode = {
+                'english': 'en',
+                'spanish': 'es',
+                'french': 'fr',
+                'german': 'de',
+                'italian': 'it',
+                'portuguese': 'pt',
+                'dutch': 'nl',
+                'russian': 'ru',
+                'chinese': 'zh',
+                'japanese': 'ja'
+            };
+
+            const detectedCode = nameToCode[detectedName] || detectedName;
+
+            if (!acceptedLangs.includes(detectedCode)) {
+                logger.info(`Skipping content (detected=${detectedName}): ${url}`);
+                return;
+            }
+        }
 
         if (parsed.text.length > 100) {
             this.emit('document', {
