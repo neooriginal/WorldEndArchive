@@ -5,6 +5,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WorldEndArchive Reader</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&family=JetBrains+Mono:wght@400;700&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 
@@ -77,14 +82,24 @@
 
             items.forEach(item => {
                 const li = document.createElement('li');
-                const date = new Date(item.timestamp).toLocaleString();
+                const date = new Date(item.timestamp);
+                const formattedDate = date.toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric'
+                });
+                const formattedTime = date.toLocaleTimeString('en-US', {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+
                 li.innerHTML = `
-                    <a href="/view/${item.id}" class="archive-link">
-                        <span class="title">${item.title || 'Untitled'}</span>
-                        <span class="url">${item.url}</span>
-                        <span class="date">${date}</span>
-                    </a>
-                `;
+                <a href="/view/${item.id}" class="archive-link">
+                    <span class="title">${item.title || 'Untitled'}</span>
+                    <span class="url">${item.url}</span>
+                    <span class="date">Archived: ${formattedDate} at ${formattedTime}</span>
+                </a>
+            `;
                 element.appendChild(li);
             });
         }

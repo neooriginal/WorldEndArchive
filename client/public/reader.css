@@ -1,24 +1,58 @@
 /* WorldEndArchive Reader Mode Styles */
 :root {
-    --reader-bg: #0d1117;
-    --reader-text: #c9d1d9;
-    --reader-link: #58a6ff;
-    --reader-heading: #ffffff;
-    --reader-border: #30363d;
-    --reader-code-bg: #161b22;
-    --reader-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
-    --reader-mono: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
+    --bg-color: #050505;
+    --glass-bg: rgba(255, 255, 255, 0.03);
+    --glass-border: rgba(255, 255, 255, 0.05);
+    --accent-primary: #00f2ff;
+    --accent-secondary: #7000ff;
+    --text-primary: #ffffff;
+    --text-secondary: #a0a0a0;
+    --text-tertiary: #606060;
+    --code-bg: rgba(0, 0, 0, 0.4);
+    --font-main: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 }
 
 body {
-    background-color: var(--reader-bg) !important;
-    color: var(--reader-text) !important;
-    font-family: var(--reader-font) !important;
-    line-height: 1.6 !important;
+    background-color: var(--bg-color) !important;
+    color: var(--text-primary) !important;
+    font-family: var(--font-main) !important;
+    line-height: 1.7 !important;
     margin: 0 auto !important;
-    padding: 20px !important;
-    max-width: 800px !important;
+    padding: 3rem 2rem !important;
+    max-width: 850px !important;
     font-size: 18px !important;
+    position: relative !important;
+}
+
+/* Liquid Background */
+body::before {
+    content: '' !important;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    background:
+        radial-gradient(circle at 15% 50%, rgba(112, 0, 255, 0.1), transparent 25%),
+        radial-gradient(circle at 85% 30%, rgba(0, 242, 255, 0.1), transparent 25%) !important;
+    filter: blur(60px) !important;
+    z-index: -1 !important;
+    animation: liquidBg 20s ease-in-out infinite alternate !important;
+}
+
+@keyframes liquidBg {
+    0% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.1);
+    }
+
+    100% {
+        transform: scale(1);
+    }
 }
 
 /* Typography */
@@ -28,39 +62,63 @@ h3,
 h4,
 h5,
 h6 {
-    color: var(--reader-heading) !important;
-    margin-top: 1.5em !important;
-    margin-bottom: 0.5em !important;
-    line-height: 1.25 !important;
+    color: var(--text-primary) !important;
+    margin-top: 2em !important;
+    margin-bottom: 0.75em !important;
+    line-height: 1.3 !important;
+    font-weight: 700 !important;
 }
 
 h1 {
-    font-size: 2em !important;
-    border-bottom: 1px solid var(--reader-border);
-    padding-bottom: 0.3em;
+    font-size: 2.5em !important;
+    border-bottom: 2px solid var(--glass-border) !important;
+    padding-bottom: 0.5em !important;
+    margin-top: 0 !important;
+    background: linear-gradient(135deg, #fff 0%, #a0a0a0 100%) !important;
+    -webkit-background-clip: text !important;
+    background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
 }
 
 h2 {
-    font-size: 1.5em !important;
-    border-bottom: 1px solid var(--reader-border);
-    padding-bottom: 0.3em;
+    font-size: 1.75em !important;
+    border-bottom: 1px solid var(--glass-border) !important;
+    padding-bottom: 0.4em !important;
+    color: var(--accent-primary) !important;
 }
 
 h3 {
-    font-size: 1.25em !important;
+    font-size: 1.35em !important;
+    color: var(--accent-secondary) !important;
+}
+
+h4 {
+    font-size: 1.15em !important;
+}
+
+h5 {
+    font-size: 1.05em !important;
+}
+
+h6 {
+    font-size: 1em !important;
 }
 
 p {
-    margin-bottom: 1em !important;
+    margin-bottom: 1.2em !important;
+    color: var(--text-secondary) !important;
 }
 
 a {
-    color: var(--reader-link) !important;
+    color: var(--accent-primary) !important;
     text-decoration: none !important;
+    border-bottom: 1px solid transparent !important;
+    transition: all 0.2s !important;
 }
 
 a:hover {
-    text-decoration: underline !important;
+    border-bottom-color: var(--accent-primary) !important;
+    color: var(--text-primary) !important;
 }
 
 /* Content Elements */
@@ -68,78 +126,140 @@ img {
     max-width: 100% !important;
     height: auto !important;
     display: block !important;
-    margin: 20px auto !important;
-    border-radius: 4px !important;
-    background-color: #fff;
-    /* Placeholder bg for transparent PNGs */
+    margin: 2rem auto !important;
+    border-radius: 8px !important;
+    border: 1px solid var(--glass-border) !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3) !important;
 }
 
 blockquote {
-    border-left: 4px solid var(--reader-border) !important;
-    margin: 0 0 1em !important;
-    padding: 0 1em !important;
-    color: #8b949e !important;
+    border-left: 3px solid var(--accent-secondary) !important;
+    margin: 1.5em 0 !important;
+    padding: 0.5em 1.5em !important;
+    background: var(--glass-bg) !important;
+    border-radius: 0 8px 8px 0 !important;
+    color: var(--text-secondary) !important;
+    font-style: italic !important;
 }
 
 ul,
 ol {
     padding-left: 2em !important;
-    margin-bottom: 1em !important;
+    margin-bottom: 1.2em !important;
+    color: var(--text-secondary) !important;
 }
 
 li {
-    margin-bottom: 0.25em !important;
+    margin-bottom: 0.5em !important;
 }
 
 /* Code */
 pre,
 code {
-    font-family: var(--reader-mono) !important;
-    background-color: var(--reader-code-bg) !important;
-    border-radius: 3px !important;
+    font-family: var(--font-mono) !important;
+    background-color: var(--code-bg) !important;
+    border-radius: 6px !important;
+    border: 1px solid var(--glass-border) !important;
 }
 
 pre {
-    padding: 16px !important;
+    padding: 1.2rem !important;
     overflow: auto !important;
-    font-size: 85% !important;
-    line-height: 1.45 !important;
+    font-size: 0.9em !important;
+    line-height: 1.5 !important;
+    box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.3) !important;
 }
 
 code {
-    padding: 0.2em 0.4em !important;
-    font-size: 85% !important;
+    padding: 0.2em 0.5em !important;
+    font-size: 0.9em !important;
+    color: var(--accent-primary) !important;
+}
+
+pre code {
+    padding: 0 !important;
+    color: var(--text-primary) !important;
+    border: none !important;
+    background: none !important;
 }
 
 /* Tables */
 table {
     border-spacing: 0 !important;
     border-collapse: collapse !important;
-    margin-bottom: 1em !important;
+    margin: 2em 0 !important;
     width: 100% !important;
     display: block !important;
     overflow-x: auto !important;
+    background: var(--glass-bg) !important;
+    border-radius: 8px !important;
+    border: 1px solid var(--glass-border) !important;
 }
 
 th,
 td {
-    padding: 6px 13px !important;
-    border: 1px solid var(--reader-border) !important;
+    padding: 0.75rem 1rem !important;
+    border: 1px solid var(--glass-border) !important;
+    text-align: left !important;
 }
 
 th {
     font-weight: 600 !important;
-    background-color: var(--reader-code-bg) !important;
+    background-color: var(--code-bg) !important;
+    color: var(--accent-primary) !important;
 }
 
-tr:nth-child(2n) {
-    background-color: var(--reader-code-bg) !important;
+tr:hover {
+    background-color: rgba(255, 255, 255, 0.02) !important;
 }
 
-/* Hide elements that might have slipped through */
+/* HR */
+hr {
+    border: none !important;
+    border-top: 1px solid var(--glass-border) !important;
+    margin: 3em 0 !important;
+}
+
+/* Strong and Emphasis */
+strong,
+b {
+    color: var(--text-primary) !important;
+    font-weight: 700 !important;
+}
+
+em,
+i {
+    color: var(--accent-secondary) !important;
+    font-style: italic !important;
+}
+
+/* Hide unwanted elements */
 .nav,
 .footer,
 .sidebar,
-.ad {
+.ad,
+.advertisement,
+nav,
+aside {
     display: none !important;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    body {
+        padding: 2rem 1.5rem !important;
+        font-size: 16px !important;
+    }
+
+    h1 {
+        font-size: 2em !important;
+    }
+
+    h2 {
+        font-size: 1.5em !important;
+    }
+
+    h3 {
+        font-size: 1.25em !important;
+    }
 }
