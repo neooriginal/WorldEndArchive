@@ -300,6 +300,17 @@ button:hover,
 .button-group {
     display: flex;
     gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.btn.offline-pkg {
+    background: linear-gradient(135deg, rgba(112, 0, 255, 0.1), rgba(0, 242, 255, 0.1));
+    border-color: var(--accent-secondary);
+}
+
+.btn.offline-pkg:hover {
+    background: var(--accent-secondary);
+    box-shadow: 0 0 20px rgba(112, 0, 255, 0.4);
 }
 
 /* Logs Section */
