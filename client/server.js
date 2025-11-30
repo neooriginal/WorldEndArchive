@@ -1,4 +1,5 @@
 const express = require('express');
+const fs = require('fs');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const zlib = require('zlib');
@@ -7,8 +8,12 @@ const cheerio = require('cheerio');
 const app = express();
 const PORT = 3001;
 
-// DB Path (relative to client dir: ../gatherer/output/archive.db)
-const DB_PATH = path.resolve(__dirname, '../gatherer/output/archive.db') || path.resolve(__dirname, 'archive.db') || path.resolve(__dirname, '../archive.db');
+const possiblePaths = [
+    path.resolve(__dirname, '../gatherer/output/archive.db'),
+    path.resolve(__dirname, 'archive.db'),
+    path.resolve(__dirname, '../archive.db')
+];
+const DB_PATH = possiblePaths.find(p => fs.existsSync(p)) || possiblePaths[0];
 
 const db = new sqlite3.Database(DB_PATH, sqlite3.OPEN_READONLY, (err) => {
     if (err) {
