@@ -8,7 +8,7 @@ const app = express();
 const PORT = 3001;
 
 // DB Path (relative to client dir: ../gatherer/output/archive.db)
-const DB_PATH = path.resolve(__dirname, '../gatherer/output/archive.db');
+const DB_PATH = path.resolve(__dirname, '../gatherer/output/archive.db') || path.resolve(__dirname, 'archive.db') || path.resolve(__dirname, '../archive.db');
 
 const db = new sqlite3.Database(DB_PATH, sqlite3.OPEN_READONLY, (err) => {
     if (err) {
