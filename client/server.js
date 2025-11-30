@@ -24,16 +24,21 @@ const db = new sqlite3.Database(DB_PATH, sqlite3.OPEN_READONLY, (err) => {
 });
 
 // Check and create FTS5 table for efficient search (run once on startup)
+let isFtsReady = false;
 const dbWrite = new sqlite3.Database(DB_PATH, (err) => {
     if (err) {
         console.error('Error opening database for FTS setup:', err.message);
     } else {
+        // Enable WAL mode for better concurrency
+        dbWrite.exec('PRAGMA journal_mode = WAL;', (err) => {
+            if (err) console.error('Failed to enable WAL mode:', err.message);
+        });
+
         // Check if FTS table exists
         dbWrite.get("SELECT name FROM sqlite_master WHERE type='table' AND name='pages_fts'", (err, row) => {
             if (!row) {
                 console.log('Creating FTS5 table for fast search...');
                 console.log("Please wait till completion. This may take a while.");
-
                 dbWrite.exec(`
                     CREATE VIRTUAL TABLE pages_fts USING fts5(title, url, content=pages, content_rowid=id);
                     INSERT INTO pages_fts(rowid, title, url) SELECT id, title, url FROM pages;
@@ -42,11 +47,13 @@ const dbWrite = new sqlite3.Database(DB_PATH, (err) => {
                         console.error('Error creating FTS table:', err.message);
                     } else {
                         console.log('FTS5 table created successfully.');
+                        isFtsReady = true;
                     }
                     dbWrite.close();
                 });
             } else {
                 console.log('FTS5 table already exists.');
+                isFtsReady = true;
                 dbWrite.close();
             }
         });
@@ -65,6 +72,19 @@ app.get('/', (req, res) => {
 app.get('/api/search', (req, res) => {
     const query = req.query.q;
     if (!query) return res.json([]);
+
+    // Fallback search function
+    const performFallbackSearch = () => {
+        const fallbackSql = `SELECT id, title, url, timestamp FROM pages WHERE title LIKE ? OR url LIKE ? LIMIT 50`;
+        db.all(fallbackSql, [`%${query}%`, `%${query}%`], (err, rows) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json(rows);
+        });
+    };
+
+    if (!isFtsReady) {
+        return performFallbackSearch();
+    }
 
     // Prepare FTS5 query: tokenize and add wildcards for partial matching
     const tokens = query
@@ -99,11 +119,7 @@ app.get('/api/search', (req, res) => {
         if (err) {
             console.error('FTS search error:', err.message);
             // Fallback to LIKE search if FTS fails
-            const fallbackSql = `SELECT id, title, url, timestamp FROM pages WHERE title LIKE ? OR url LIKE ? LIMIT 50`;
-            db.all(fallbackSql, [`%${query}%`, `%${query}%`], (err, rows) => {
-                if (err) return res.status(500).json({ error: err.message });
-                res.json(rows);
-            });
+            performFallbackSearch();
         } else {
             res.json(rows);
         }
