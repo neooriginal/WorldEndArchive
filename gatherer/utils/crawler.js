@@ -67,17 +67,33 @@ class Crawler extends EventEmitter {
         }
     }
 
-    addToQueue(url, priority = false) {
-        if (this.visited.has(url)) return;
+    normalizeUrl(url) {
+        try {
+            const u = new URL(url);
+            if (u.hostname.startsWith('www.')) {
+                u.hostname = u.hostname.slice(4);
+            }
+            // Remove hash fragment
+            u.hash = '';
+            return u.href;
+        } catch (e) {
+            return url;
+        }
+    }
 
-        if (classifier.isIgnored(url)) {
-            logger.info(`Ignored domain: ${url}`);
+    addToQueue(url, priority = false) {
+        const normalizedUrl = this.normalizeUrl(url);
+
+        if (this.visited.has(normalizedUrl)) return;
+
+        if (classifier.isIgnored(normalizedUrl)) {
+            logger.info(`Ignored domain: ${normalizedUrl}`);
             return;
         }
 
         // Pre-process URLs to filter out low-quality ones
-        if (classifier.isLowQualityUrl(url)) {
-            this.visited.add(url);
+        if (classifier.isLowQualityUrl(normalizedUrl)) {
+            this.visited.add(normalizedUrl);
             return;
         }
 
@@ -87,7 +103,7 @@ class Crawler extends EventEmitter {
         if (!priority) {
             // Hard max - reject everything
             if (currentQueueSize >= this.maxQueueSize) {
-                this.visited.add(url);
+                this.visited.add(normalizedUrl);
                 return;
             }
 
@@ -98,7 +114,7 @@ class Crawler extends EventEmitter {
                 const dropRate = Math.min(0.95, (overTarget / rangeSize) * 0.95);
 
                 if (Math.random() < dropRate) {
-                    this.visited.add(url);
+                    this.visited.add(normalizedUrl);
                     return;
                 }
             }
@@ -106,12 +122,12 @@ class Crawler extends EventEmitter {
 
         if (priority) {
             // Use a separate array for priority URLs (processed first in processQueue)
-            this.priorityQueue.push(url);
+            this.priorityQueue.push(normalizedUrl);
         } else {
-            this.queue.enqueue(url);
+            this.queue.enqueue(normalizedUrl);
         }
 
-        this.visited.add(url);
+        this.visited.add(normalizedUrl);
         this.processQueue();
     }
 
