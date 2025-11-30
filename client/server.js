@@ -32,6 +32,8 @@ const dbWrite = new sqlite3.Database(DB_PATH, (err) => {
         dbWrite.get("SELECT name FROM sqlite_master WHERE type='table' AND name='pages_fts'", (err, row) => {
             if (!row) {
                 console.log('Creating FTS5 table for fast search...');
+                console.log("Please wait till completion. This may take a while.");
+
                 dbWrite.exec(`
                     CREATE VIRTUAL TABLE pages_fts USING fts5(title, url, content=pages, content_rowid=id);
                     INSERT INTO pages_fts(rowid, title, url) SELECT id, title, url FROM pages;
